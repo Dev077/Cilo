@@ -1,14 +1,6 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, Pressable } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withRepeat,
-  withTiming,
-  withSequence,
-  Easing,
-} from 'react-native-reanimated';
 
 const { width, height } = Dimensions.get('window');
 
@@ -60,39 +52,6 @@ export default function HomeScreen() {
   const theme = THEMES[timeOfDay];
   const userName = 'Dev';
 
-  // Orb animations
-  const orbScale = useSharedValue(1);
-  const orbGlow = useSharedValue(0.6);
-
-  useEffect(() => {
-    // Breathing animation
-    orbScale.value = withRepeat(
-      withSequence(
-        withTiming(1.08, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
-        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) })
-      ),
-      -1,
-      false
-    );
-
-    orbGlow.value = withRepeat(
-      withSequence(
-        withTiming(1, { duration: 1500, easing: Easing.inOut(Easing.ease) }),
-        withTiming(0.6, { duration: 1500, easing: Easing.inOut(Easing.ease) })
-      ),
-      -1,
-      false
-    );
-  }, []);
-
-  const orbAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: orbScale.value }],
-  }));
-
-  const glowAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: orbGlow.value,
-  }));
-
   return (
     <LinearGradient colors={theme.colors} style={styles.container}>
       {/* Main Content */}
@@ -111,31 +70,6 @@ export default function HomeScreen() {
           {userName}
         </Text>
       </View>
-
-      {/* Siri-style Orb */}
-      <View style={styles.orbContainer}>
-        <Pressable
-          onPress={() => console.log('Tap - open search')}
-          onLongPress={() => console.log('Hold - start listening')}
-        >
-          {/* Glow layer */}
-          <Animated.View style={[styles.orbGlow, glowAnimatedStyle]} />
-
-          {/* Main orb */}
-          <Animated.View style={[styles.orb, orbAnimatedStyle]}>
-            <LinearGradient
-              colors={['rgba(255,255,255,0.95)', 'rgba(140,200,255,0.8)', 'rgba(100,180,255,0.6)']}
-              style={styles.orbGradient}
-            />
-            {/* Inner highlight */}
-            <View style={styles.orbHighlight} />
-          </Animated.View>
-        </Pressable>
-
-        <Text style={[styles.orbLabel, { color: theme.subtextColor }]}>
-          Tap to type • Hold to speak
-        </Text>
-      </View>
     </LinearGradient>
   );
 }
@@ -148,7 +82,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
-    paddingBottom: 100,
   },
   weather: {
     flexDirection: 'row',
@@ -172,50 +105,5 @@ const styles = StyleSheet.create({
     fontSize: 34,
     fontWeight: '300',
     lineHeight: 40,
-  },
-  orbContainer: {
-    alignItems: 'center',
-    paddingBottom: 50,
-  },
-  orbGlow: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(100,180,255,0.4)',
-    top: -8,
-    left: -8,
-    shadowColor: '#64B4FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.8,
-    shadowRadius: 20,
-  },
-  orb: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    overflow: 'hidden',
-    shadowColor: '#64B4FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 15,
-    elevation: 10,
-  },
-  orbGradient: {
-    flex: 1,
-  },
-  orbHighlight: {
-    position: 'absolute',
-    top: 8,
-    left: 10,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.8)',
-  },
-  orbLabel: {
-    marginTop: 16,
-    fontSize: 14,
-    fontWeight: '400',
   },
 });
