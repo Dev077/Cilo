@@ -1,8 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-
-const { width, height } = Dimensions.get('window');
+import { useRouter } from 'expo-router';
 
 const THEMES = {
   morning: {
@@ -48,33 +47,50 @@ function getTimeOfDay() {
 }
 
 export default function HomeScreen() {
+  const router = useRouter();
   const timeOfDay = getTimeOfDay();
   const theme = THEMES[timeOfDay];
   const userName = 'Dev';
 
+  const handleTap = () => {
+    router.push('/tabs/summary');
+  };
+
   return (
-    <LinearGradient colors={theme.colors} style={styles.container}>
-      {/* Main Content */}
-      <View style={styles.content}>
-        {/* Weather */}
-        <View style={styles.weather}>
-          <Text style={styles.weatherIcon}>{theme.weather}</Text>
-          <Text style={[styles.temp, { color: theme.textColor }]}>{theme.temp}</Text>
+    <Pressable style={styles.pressable} onPress={handleTap}>
+      <LinearGradient colors={theme.colors} style={styles.container}>
+        {/* Main Content */}
+        <View style={styles.content}>
+          {/* Weather */}
+          <View style={styles.weather}>
+            <Text style={styles.weatherIcon}>{theme.weather}</Text>
+            <Text style={[styles.temp, { color: theme.textColor }]}>{theme.temp}</Text>
+          </View>
+
+          {/* Greeting */}
+          <Text style={[styles.greeting, { color: theme.textColor }]}>
+            {theme.greeting}
+          </Text>
+          <Text style={[styles.name, { color: theme.subtextColor }]}>
+            {userName}
+          </Text>
         </View>
 
-        {/* Greeting */}
-        <Text style={[styles.greeting, { color: theme.textColor }]}>
-          {theme.greeting}
-        </Text>
-        <Text style={[styles.name, { color: theme.subtextColor }]}>
-          {userName}
-        </Text>
-      </View>
-    </LinearGradient>
+        {/* Tap hint */}
+        <View style={styles.hintContainer}>
+          <Text style={[styles.hint, { color: theme.subtextColor }]}>
+            Tap anywhere to continue
+          </Text>
+        </View>
+      </LinearGradient>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
+  pressable: {
+    flex: 1,
+  },
   container: {
     flex: 1,
   },
@@ -105,5 +121,13 @@ const styles = StyleSheet.create({
     fontSize: 34,
     fontWeight: '300',
     lineHeight: 40,
+  },
+  hintContainer: {
+    alignItems: 'center',
+    paddingBottom: 50,
+  },
+  hint: {
+    fontSize: 14,
+    fontWeight: '400',
   },
 });
