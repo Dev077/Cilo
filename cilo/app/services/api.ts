@@ -1,10 +1,9 @@
 // API Configuration
-// Change this to your computer's IP address if testing on a physical device
-// For iOS Simulator: 'http://localhost:3000'
-// For Android Emulator: 'http://10.0.2.2:3000'
-// For Physical Device: 'http://YOUR_COMPUTER_IP:3000'
+const dotenv = require('dotenv');
+dotenv.config({ path: '../.env' });;
 
-const API_BASE_URL = 'http://localhost:3000/api';
+
+const API_BASE_URL = `http://${process.env.MACHINE_IP}:3000/api`;
 
 // Helper function for API calls
 async function fetchAPI(endpoint: string, options?: RequestInit) {
