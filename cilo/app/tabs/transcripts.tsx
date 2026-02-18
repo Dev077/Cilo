@@ -1,80 +1,84 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, Pressable } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, Pressable, ActivityIndicator } from 'react-native';
+import { transcriptsAPI, Transcript } from '../services/api';
 
-// Mock transcript data
-const MOCK_TRANSCRIPTS = [
-  {
-    id: '1',
-    label: 'Sarah Chen',
-    date: 'Dec 24, 2024',
-    duration: '32 min',
-    color: '#FEF3E2',
-    borderColor: '#FECDA6',
-  },
-  {
-    id: '2',
-    label: 'Product Meeting',
-    date: 'Dec 23, 2024',
-    duration: '45 min',
-    color: '#E8F5E9',
-    borderColor: '#A5D6A7',
-  },
-  {
-    id: '3',
-    label: 'Alex Rodriguez',
-    date: 'Dec 23, 2024',
-    duration: '28 min',
-    color: '#E3F2FD',
-    borderColor: '#90CAF9',
-  },
-  {
-    id: '4',
-    label: 'Budget Planning',
-    date: 'Dec 22, 2024',
-    duration: '60 min',
-    color: '#FFF3E0',
-    borderColor: '#FFCC80',
-  },
-  {
-    id: '5',
-    label: 'Jordan Kim',
-    date: 'Dec 22, 2024',
-    duration: '52 min',
-    color: '#FCE4EC',
-    borderColor: '#F48FB1',
-  },
-  {
-    id: '6',
-    label: 'Marketing Ideas',
-    date: 'Dec 21, 2024',
-    duration: '35 min',
-    color: '#EDE7F6',
-    borderColor: '#B39DDB',
-  },
-  {
-    id: '7',
-    label: 'Mom',
-    date: 'Dec 20, 2024',
-    duration: '18 min',
-    color: '#E0F7FA',
-    borderColor: '#80DEEA',
-  },
-  {
-    id: '8',
-    label: 'App Design',
-    date: 'Dec 19, 2024',
-    duration: '40 min',
-    color: '#F3E5F5',
-    borderColor: '#CE93D8',
-  },
+// Fallback colors if transcript doesn't have one
+const NOTE_COLORS = [
+  '#FEF3E2', '#E8F5E9', '#E3F2FD', '#FFF3E0', 
+  '#FCE4EC', '#EDE7F6', '#E0F7FA', '#F3E5F5'
 ];
 
+function getRandomColor(index: number) {
+  return NOTE_COLORS[index % NOTE_COLORS.length];
+}
+
+function formatDate(dateString: string) {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric', 
+    year: 'numeric' 
+  });
+}
+
 export default function TranscriptsScreen() {
+  const [transcripts, setTranscripts] = useState<Transcript[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadTranscripts();
+  }, []);
+
+  const loadTranscripts = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await transcriptsAPI.getAll();
+      setTranscripts(data);
+    } catch (err) {
+      setError('Failed to load transcripts');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Transcripts</Text>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#7E57C2" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Transcripts</Text>
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable style={styles.retryButton} onPress={loadTranscripts}>
+            <Text style={styles.retryText}>Tap to retry</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Transcripts</Text>
+        <Text style={styles.headerSubtitle}>{transcripts.length} conversations</Text>
       </View>
 
       {/* Notes Grid */}
@@ -83,14 +87,13 @@ export default function TranscriptsScreen() {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.gridContainer}
       >
-        {MOCK_TRANSCRIPTS.map((transcript) => (
+        {transcripts.map((transcript, index) => (
           <Pressable 
-            key={transcript.id} 
+            key={transcript._id} 
             style={[
               styles.noteCard, 
               { 
-                backgroundColor: transcript.color,
-                borderColor: transcript.borderColor,
+                backgroundColor: transcript.color || getRandomColor(index),
               }
             ]}
           >
@@ -102,7 +105,7 @@ export default function TranscriptsScreen() {
 
             {/* Meta info */}
             <View style={styles.noteMeta}>
-              <Text style={styles.noteDate}>{transcript.date}</Text>
+              <Text style={styles.noteDate}>{formatDate(transcript.date)}</Text>
               <Text style={styles.noteDuration}>{transcript.duration}</Text>
             </View>
           </Pressable>
@@ -127,6 +130,38 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1F2937',
   },
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: '#7E57C2',
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
   scrollView: {
     flex: 1,
   },
@@ -142,6 +177,7 @@ const styles = StyleSheet.create({
     margin: '2%',
     borderRadius: 4,
     borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
     padding: 16,
     justifyContent: 'center',
     alignItems: 'center',

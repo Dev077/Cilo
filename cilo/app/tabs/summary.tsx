@@ -1,20 +1,92 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, Pressable, ActivityIndicator } from 'react-native';
+import { eventsAPI, Event, TodaySummary } from '../services/api';
 
-// Mock data for daily summary
-const MOCK_TASKS = [
-  { id: '1', title: 'Team standup meeting', time: '10:00 AM', completed: false },
-  { id: '2', title: 'Review project proposal', time: '2:00 PM', completed: false },
-  { id: '3', title: 'Call with Alex about launch', time: '4:30 PM', completed: false },
-];
+function formatTime(dateString: string) {
+  const date = new Date(dateString);
+  return date.toLocaleDateString('en-US', { 
+    weekday: 'short',
+    month: 'short', 
+    day: 'numeric'
+  });
+}
 
-const MOCK_PAST_EVENTS = [
-  { id: '1', title: 'Coffee chat with Sarah', summary: 'Discussed new marketing strategies and Q2 goals', time: 'Yesterday, 3:00 PM' },
-  { id: '2', title: 'Product brainstorm', summary: 'Explored new feature ideas for the mobile app', time: 'Yesterday, 11:00 AM' },
-  { id: '3', title: 'Investor call', summary: 'Presented roadmap and answered questions about growth metrics', time: '2 days ago' },
-];
+function getRelativeTime(dateString: string) {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffDays = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24));
+  
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  return formatTime(dateString);
+}
 
 export default function SummaryScreen() {
+  const [summary, setSummary] = useState<TodaySummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadSummary();
+  }, []);
+
+  const loadSummary = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await eventsAPI.getTodaySummary();
+      setSummary(data);
+    } catch (err) {
+      setError('Failed to load summary');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleToggleTask = async (taskId: string) => {
+    try {
+      await eventsAPI.toggleComplete(taskId);
+      // Reload summary to get updated data
+      loadSummary();
+    } catch (err) {
+      console.error('Failed to toggle task:', err);
+    }
+  };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Your Day</Text>
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#7E57C2" />
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (error) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Your Day</Text>
+        </View>
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Pressable style={styles.retryButton} onPress={loadSummary}>
+            <Text style={styles.retryText}>Tap to retry</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const tasks = summary?.tasks || [];
+  const pastEvents = summary?.pastEvents || [];
+
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
@@ -33,28 +105,64 @@ export default function SummaryScreen() {
         {/* To Do Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>To Do</Text>
-          {MOCK_TASKS.map((task) => (
-            <View key={task.id} style={styles.taskCard}>
-              <View style={styles.taskCheckbox} />
-              <View style={styles.taskContent}>
-                <Text style={styles.taskTitle}>{task.title}</Text>
-                <Text style={styles.taskTime}>{task.time}</Text>
-              </View>
+          {tasks.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>No tasks for today</Text>
             </View>
-          ))}
+          ) : (
+            tasks.map((task) => (
+              <Pressable 
+                key={task._id} 
+                style={styles.taskCard}
+                onPress={() => handleToggleTask(task._id)}
+              >
+                <View style={[
+                  styles.taskCheckbox,
+                  task.completed && styles.taskCheckboxCompleted
+                ]}>
+                  {task.completed && <Text style={styles.checkmark}>✓</Text>}
+                </View>
+                <View style={styles.taskContent}>
+                  <Text style={[
+                    styles.taskTitle,
+                    task.completed && styles.taskTitleCompleted
+                  ]}>
+                    {task.title}
+                  </Text>
+                  {task.time && (
+                    <Text style={styles.taskTime}>{task.time}</Text>
+                  )}
+                </View>
+              </Pressable>
+            ))
+          )}
         </View>
 
         {/* What Happened Section */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>What Happened</Text>
-          {MOCK_PAST_EVENTS.map((event) => (
-            <View key={event.id} style={styles.eventCard}>
-              <Text style={styles.eventTitle}>{event.title}</Text>
-              <Text style={styles.eventSummary}>{event.summary}</Text>
-              <Text style={styles.eventTime}>{event.time}</Text>
+          {pastEvents.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.emptyText}>No recent events</Text>
             </View>
-          ))}
+          ) : (
+            pastEvents.map((event) => (
+              <View key={event._id} style={styles.eventCard}>
+                <Text style={styles.eventTitle}>{event.title}</Text>
+                {event.summary && (
+                  <Text style={styles.eventSummary}>{event.summary}</Text>
+                )}
+                <Text style={styles.eventTime}>
+                  {getRelativeTime(event.date)}
+                  {event.time && `, ${event.time}`}
+                </Text>
+              </View>
+            ))
+          )}
         </View>
+
+        {/* Bottom spacing */}
+        <View style={styles.bottomSpacing} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -83,6 +191,33 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     marginTop: 4,
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 40,
+  },
+  errorText: {
+    fontSize: 16,
+    color: '#6B7280',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  retryButton: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: '#7E57C2',
+    borderRadius: 8,
+  },
+  retryText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
   section: {
     marginBottom: 28,
   },
@@ -91,6 +226,21 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#374151',
     marginBottom: 12,
+  },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 20,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#9CA3AF',
   },
   taskCard: {
     flexDirection: 'row',
@@ -106,12 +256,23 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   taskCheckbox: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     borderWidth: 2,
     borderColor: '#D1D5DB',
     marginRight: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  taskCheckboxCompleted: {
+    backgroundColor: '#7E57C2',
+    borderColor: '#7E57C2',
+  },
+  checkmark: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
   },
   taskContent: {
     flex: 1,
@@ -120,6 +281,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     color: '#1F2937',
+  },
+  taskTitleCompleted: {
+    textDecorationLine: 'line-through',
+    color: '#9CA3AF',
   },
   taskTime: {
     fontSize: 14,
@@ -152,5 +317,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9CA3AF',
     marginTop: 8,
+  },
+  bottomSpacing: {
+    height: 20,
   },
 });

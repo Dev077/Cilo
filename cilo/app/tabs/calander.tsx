@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -7,61 +7,24 @@ import {
   Pressable, 
   ScrollView, 
   Modal,
-  Dimensions 
+  Dimensions,
+  ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { transcriptsAPI, Transcript } from '../services/api';
 
 const { width } = Dimensions.get('window');
 const DAY_CELL_SIZE = (width - 48) / 7;
-
-// Mock data for events/transcripts on specific dates
-const MOCK_EVENTS: Record<string, Array<{
-  id: string;
-  label: string;
-  type: 'transcript' | 'summary';
-  duration?: string;
-  color: string;
-  rotation: number;
-}>> = {
-  '2024-12-24': [
-    { id: '1', label: 'Sarah', type: 'transcript', duration: '32 min', color: '#FEF3E2', rotation: -2 },
-  ],
-  '2024-12-23': [
-    { id: '2', label: 'Product', type: 'transcript', duration: '45 min', color: '#E8F5E9', rotation: 1 },
-    { id: '3', label: 'Alex', type: 'transcript', duration: '28 min', color: '#E3F2FD', rotation: -1 },
-  ],
-  '2024-12-22': [
-    { id: '4', label: 'Budget', type: 'transcript', duration: '60 min', color: '#FFF3E0', rotation: 2 },
-  ],
-  '2024-12-21': [
-    { id: '6', label: 'Marketing', type: 'transcript', duration: '35 min', color: '#EDE7F6', rotation: -1 },
-  ],
-  '2024-12-20': [
-    { id: '7', label: 'Mom', type: 'transcript', duration: '18 min', color: '#E0F7FA', rotation: 1 },
-  ],
-  '2024-12-19': [
-    { id: '8', label: 'Design', type: 'transcript', duration: '40 min', color: '#F3E5F5', rotation: -2 },
-  ],
-  '2024-12-18': [
-    { id: '9', label: 'Standup', type: 'transcript', duration: '15 min', color: '#FEF3E2', rotation: 1 },
-  ],
-  '2024-12-15': [
-    { id: '10', label: 'Investor', type: 'transcript', duration: '55 min', color: '#E8F5E9', rotation: -1 },
-  ],
-  '2024-12-10': [
-    { id: '11', label: 'Planning', type: 'transcript', duration: '40 min', color: '#FCE4EC', rotation: 2 },
-  ],
-  '2024-12-05': [
-    { id: '12', label: 'Review', type: 'transcript', duration: '25 min', color: '#E3F2FD', rotation: -1 },
-  ],
-};
 
 const DAYS_OF_WEEK = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
+
+// Random rotations for notes
+const ROTATIONS = [-2, -1, 0, 1, 2];
 
 function getDaysInMonth(year: number, month: number) {
   return new Date(year, month + 1, 0).getDate();
@@ -75,8 +38,8 @@ function formatDateKey(year: number, month: number, day: number) {
   return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
-function formatDisplayDate(dateKey: string) {
-  const date = new Date(dateKey);
+function formatDisplayDate(dateString: string) {
+  const date = new Date(dateString);
   return date.toLocaleDateString('en-US', { 
     weekday: 'long',
     month: 'long', 
@@ -85,15 +48,52 @@ function formatDisplayDate(dateKey: string) {
   });
 }
 
+// Group transcripts by date
+function groupByDate(transcripts: Transcript[]): Record<string, Transcript[]> {
+  const grouped: Record<string, Transcript[]> = {};
+  
+  transcripts.forEach((transcript) => {
+    const date = new Date(transcript.date);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    
+    if (!grouped[key]) {
+      grouped[key] = [];
+    }
+    grouped[key].push(transcript);
+  });
+  
+  return grouped;
+}
+
 export default function CalendarScreen() {
   const today = new Date();
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
-  const [selectedEvent, setSelectedEvent] = useState<any>(null);
+  const [selectedTranscript, setSelectedTranscript] = useState<Transcript | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [transcripts, setTranscripts] = useState<Transcript[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [eventsByDate, setEventsByDate] = useState<Record<string, Transcript[]>>({});
 
   const daysInMonth = getDaysInMonth(currentYear, currentMonth);
   const firstDayOfMonth = getFirstDayOfMonth(currentYear, currentMonth);
+
+  useEffect(() => {
+    loadTranscripts();
+  }, [currentYear, currentMonth]);
+
+  const loadTranscripts = async () => {
+    try {
+      setLoading(true);
+      const data = await transcriptsAPI.getByMonth(currentYear, currentMonth + 1);
+      setTranscripts(data);
+      setEventsByDate(groupByDate(data));
+    } catch (err) {
+      console.error('Failed to load transcripts:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const goToPreviousMonth = () => {
     if (currentMonth === 0) {
@@ -113,8 +113,8 @@ export default function CalendarScreen() {
     }
   };
 
-  const handleEventPress = (event: any, dateKey: string) => {
-    setSelectedEvent({ ...event, date: dateKey });
+  const handleEventPress = (transcript: Transcript) => {
+    setSelectedTranscript(transcript);
     setModalVisible(true);
   };
 
@@ -129,12 +129,12 @@ export default function CalendarScreen() {
     // Days of the month
     for (let day = 1; day <= daysInMonth; day++) {
       const dateKey = formatDateKey(currentYear, currentMonth, day);
-      const events = MOCK_EVENTS[dateKey] || [];
+      const dayTranscripts = eventsByDate[dateKey] || [];
       const isToday = 
         day === today.getDate() && 
         currentMonth === today.getMonth() && 
         currentYear === today.getFullYear();
-      const hasEvents = events.length > 0;
+      const hasEvents = dayTranscripts.length > 0;
 
       days.push(
         <View key={day} style={styles.dayCell}>
@@ -147,27 +147,27 @@ export default function CalendarScreen() {
           {/* Sticky notes for events */}
           {hasEvents && (
             <View style={styles.notesContainer}>
-              {events.slice(0, 1).map((event) => (
+              {dayTranscripts.slice(0, 1).map((transcript, index) => (
                 <Pressable
-                  key={event.id}
+                  key={transcript._id}
                   style={[
                     styles.miniNote,
                     { 
-                      backgroundColor: event.color,
-                      transform: [{ rotate: `${event.rotation}deg` }],
+                      backgroundColor: transcript.color || '#FEF3E2',
+                      transform: [{ rotate: `${ROTATIONS[index % ROTATIONS.length]}deg` }],
                     },
                   ]}
-                  onPress={() => handleEventPress(event, dateKey)}
+                  onPress={() => handleEventPress(transcript)}
                 >
                   <View style={styles.miniTape} />
                   <Text style={styles.miniNoteText} numberOfLines={1}>
-                    {event.label}
+                    {transcript.label}
                   </Text>
                 </Pressable>
               ))}
-              {events.length > 1 && (
+              {dayTranscripts.length > 1 && (
                 <View style={styles.moreBadge}>
-                  <Text style={styles.moreText}>+{events.length - 1}</Text>
+                  <Text style={styles.moreText}>+{dayTranscripts.length - 1}</Text>
                 </View>
               )}
             </View>
@@ -228,9 +228,15 @@ export default function CalendarScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.scrollContent}
           >
-            <View style={styles.calendarGrid}>
-              {renderCalendarDays()}
-            </View>
+            {loading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color="#7E57C2" />
+              </View>
+            ) : (
+              <View style={styles.calendarGrid}>
+                {renderCalendarDays()}
+              </View>
+            )}
             
             {/* Bottom spacing */}
             <View style={styles.bottomSpacing} />
@@ -252,35 +258,44 @@ export default function CalendarScreen() {
           />
           
           <View style={styles.modalContent}>
-            {selectedEvent && (
+            {selectedTranscript && (
               <>
                 {/* Large sticky note */}
                 <View 
                   style={[
                     styles.modalNote, 
                     { 
-                      backgroundColor: selectedEvent.color,
+                      backgroundColor: selectedTranscript.color || '#FEF3E2',
                       transform: [{ rotate: '-1deg' }],
                     }
                   ]}
                 >
                   <View style={styles.modalTape} />
                   
-                  <Text style={styles.modalNoteLabel}>{selectedEvent.label}</Text>
+                  <Text style={styles.modalNoteLabel}>{selectedTranscript.label}</Text>
                   
                   <View style={styles.modalNoteMeta}>
-                    {selectedEvent.duration && (
+                    {selectedTranscript.duration && (
                       <View style={styles.metaItem}>
                         <Ionicons name="time-outline" size={14} color="#6B7280" />
-                        <Text style={styles.metaText}>{selectedEvent.duration}</Text>
+                        <Text style={styles.metaText}>{selectedTranscript.duration}</Text>
                       </View>
                     )}
                   </View>
                   
                   <Text style={styles.modalNoteDate}>
-                    {formatDisplayDate(selectedEvent.date)}
+                    {formatDisplayDate(selectedTranscript.date)}
                   </Text>
                 </View>
+
+                {/* Preview of content */}
+                {selectedTranscript.content && (
+                  <View style={styles.previewContainer}>
+                    <Text style={styles.previewText} numberOfLines={3}>
+                      {selectedTranscript.content}
+                    </Text>
+                  </View>
+                )}
 
                 {/* Action buttons */}
                 <View style={styles.modalActions}>
@@ -393,6 +408,10 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingHorizontal: 24,
+  },
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: 'center',
   },
   calendarGrid: {
     flexDirection: 'row',
@@ -510,7 +529,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 4,
-    marginBottom: 24,
+    marginBottom: 16,
   },
   modalTape: {
     position: 'absolute',
@@ -547,6 +566,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9CA3AF',
     textAlign: 'center',
+  },
+  previewContainer: {
+    width: '100%',
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  previewText: {
+    fontSize: 14,
+    color: '#6B7280',
+    lineHeight: 20,
   },
   modalActions: {
     width: '100%',
