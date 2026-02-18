@@ -1,7 +1,7 @@
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
 
-dotenv.config();
+dotenv.config({ path: '../.env' });;
 
 const Transcript = require('./models/Transcript');
 const Event = require('./models/Event');
@@ -166,7 +166,7 @@ const seedDatabase = async () => {
     const events = await Event.insertMany(sampleEvents);
     console.log(`Inserted ${events.length} events`);
 
-    console.log('\n✅ Database seeded successfully!');
+    console.log('\n Database seeded successfully!');
     process.exit(0);
   } catch (error) {
     console.error('Error seeding database:', error);
