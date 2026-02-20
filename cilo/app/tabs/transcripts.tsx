@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, Pressable, ActivityIndicator } from 'react-native';
+import { useRouter } from 'expo-router';
 import { transcriptsAPI, Transcript } from '../services/api';
 
 // Fallback colors if transcript doesn't have one
@@ -22,6 +23,7 @@ function formatDate(dateString: string) {
 }
 
 export default function TranscriptsScreen() {
+  const router = useRouter();
   const [transcripts, setTranscripts] = useState<Transcript[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -42,6 +44,13 @@ export default function TranscriptsScreen() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTranscriptPress = (id: string) => {
+    router.push({
+      pathname: `/transcript/[id]` as any,
+      params: { id },
+    });
   };
 
   if (loading) {
@@ -96,6 +105,7 @@ export default function TranscriptsScreen() {
                 backgroundColor: transcript.color || getRandomColor(index),
               }
             ]}
+            onPress={() => handleTranscriptPress(transcript._id)}
           >
             {/* Tape effect */}
             <View style={styles.tape} />

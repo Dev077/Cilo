@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { transcriptsAPI, Transcript } from '../services/api';
 
 const { width } = Dimensions.get('window');
@@ -67,6 +68,7 @@ function groupByDate(transcripts: Transcript[]): Record<string, Transcript[]> {
 
 export default function CalendarScreen() {
   const today = new Date();
+  const router = useRouter();
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
   const [selectedTranscript, setSelectedTranscript] = useState<Transcript | null>(null);
@@ -299,7 +301,16 @@ export default function CalendarScreen() {
 
                 {/* Action buttons */}
                 <View style={styles.modalActions}>
-                  <Pressable style={styles.primaryButton}>
+                  <Pressable 
+                    style={styles.primaryButton}
+                    onPress={() => {
+                      setModalVisible(false);
+                      router.push({
+                        pathname: '/transcript/[id]' as any,
+                        params: { id: selectedTranscript._id },
+                      });
+                    }}
+                  >
                     <Ionicons name="document-text-outline" size={18} color="#FFFFFF" />
                     <Text style={styles.primaryButtonText}>View Transcript</Text>
                   </Pressable>

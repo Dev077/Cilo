@@ -8,6 +8,12 @@ export default function RootLayout() {
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
         <Stack.Screen name="tabs" />
+        <Stack.Screen 
+          name="transcript/[id]" 
+          options={{
+            presentation: 'card',
+          }}
+        />
       </Stack>
       <StatusBar style="auto" />
     </>
