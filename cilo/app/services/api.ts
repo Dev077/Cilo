@@ -1,9 +1,7 @@
-// API Configuration
-const dotenv = require('dotenv');
-dotenv.config({ path: '../.env' });;
 
 
-const API_BASE_URL = `http://${process.env.MACHINE_IP}:3000/api`;
+
+const API_BASE_URL = 'http://172.20.10.2:3000/api';
 
 // Helper function for API calls
 async function fetchAPI(endpoint: string, options?: RequestInit) {

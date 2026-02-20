@@ -135,7 +135,7 @@ export default function TranscriptDetailScreen() {
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Participants</Text>
             <View style={styles.participantsList}>
-              {transcript.participants.map((participant, index) => (
+              {transcript.participants.map((participant: string, index: number) => (
                 <View key={index} style={styles.participantChip}>
                   <View style={styles.participantAvatar}>
                     <Text style={styles.participantInitial}>
@@ -143,20 +143,6 @@ export default function TranscriptDetailScreen() {
                     </Text>
                   </View>
                   <Text style={styles.participantName}>{participant}</Text>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Tags */}
-        {transcript.tags && transcript.tags.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Tags</Text>
-            <View style={styles.tagsList}>
-              {transcript.tags.map((tag, index) => (
-                <View key={index} style={styles.tagChip}>
-                  <Text style={styles.tagText}>#{tag}</Text>
                 </View>
               ))}
             </View>
@@ -359,22 +345,6 @@ const styles = StyleSheet.create({
     color: '#374151',
     fontWeight: '500',
   },
-  tagsList: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  tagChip: {
-    backgroundColor: '#EDE7F6',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 16,
-  },
-  tagText: {
-    fontSize: 13,
-    color: '#7E57C2',
-    fontWeight: '500',
-  },
   contentCard: {
     backgroundColor: '#FFFFFF',
     borderRadius: 16,
@@ -388,7 +358,7 @@ const styles = StyleSheet.create({
   contentText: {
     fontSize: 16,
     color: '#374151',
-    lineHeight: 26,
+    lineHeight: 28,
   },
   noContentText: {
     fontSize: 14,

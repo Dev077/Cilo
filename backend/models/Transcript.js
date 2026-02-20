@@ -29,9 +29,6 @@ const transcriptSchema = new mongoose.Schema({
   },
   participants: [{
     type: String
-  }],
-  tags: [{
-    type: String
   }]
 }, {
   timestamps: true
