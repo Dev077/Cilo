@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const Transcript = require('../models/Transcript');
+const Event = require('../models/Event');
+const { processTranscript } = require('../services/gemini');
 
 // @route   GET /api/transcripts
 // @desc    Get all transcripts
@@ -72,24 +74,111 @@ router.get('/month/:year/:month', async (req, res) => {
 });
 
 // @route   POST /api/transcripts
-// @desc    Create a new transcript
+// @desc    Create a new transcript and process with AI
 router.post('/', async (req, res) => {
   try {
+    const transcriptDate = req.body.date ? new Date(req.body.date) : new Date();
+    
+    //create the transcript first
     const transcript = new Transcript({
       label: req.body.label,
       type: req.body.type,
-      date: req.body.date || Date.now(),
+      date: transcriptDate,
       duration: req.body.duration,
       content: req.body.content,
       color: req.body.color,
       participants: req.body.participants,
-      tags: req.body.tags
+      processed: false
     });
 
     const savedTranscript = await transcript.save();
+
+    // Process with Gemini if there's content
+    if (req.body.content && req.body.content.trim().length > 0) {
+      try {
+        const aiResult = await processTranscript(
+          req.body.content,
+          req.body.label,
+          transcriptDate
+        );
+
+        // Update transcript with summary
+        savedTranscript.summary = aiResult.summary;
+        savedTranscript.processed = true;
+        await savedTranscript.save();
+
+        // Create tasks as events
+        if (aiResult.tasks && aiResult.tasks.length > 0) {
+          const events = aiResult.tasks.map(task => ({
+            title: task.title,
+            type: 'task',
+            date: task.dueDate ? new Date(task.dueDate) : transcriptDate,
+            time: task.time || null,
+            completed: false,
+            transcriptId: savedTranscript._id
+          }));
+
+          await Event.insertMany(events);
+        }
+      } catch (aiError) {
+        console.error('AI processing failed:', aiError);
+        // Don't fail the request, just log the error
+      }
+    }
+
     res.status(201).json(savedTranscript);
   } catch (error) {
     res.status(400).json({ message: error.message });
+  }
+});
+
+// @route   POST /api/transcripts/:id/process
+// @desc    Process an existing transcript with AI (for reprocessing or missed transcripts)
+router.post('/:id/process', async (req, res) => {
+  try {
+    const transcript = await Transcript.findById(req.params.id);
+    
+    if (!transcript) {
+      return res.status(404).json({ message: 'Transcript not found' });
+    }
+
+    if (!transcript.content || transcript.content.trim().length === 0) {
+      return res.status(400).json({ message: 'Transcript has no content to process' });
+    }
+
+    const aiResult = await processTranscript(
+      transcript.content,
+      transcript.label,
+      transcript.date
+    );
+
+    // Update transcript with summary
+    transcript.summary = aiResult.summary;
+    transcript.processed = true;
+    await transcript.save();
+
+    // Create tasks as events (delete old ones first if reprocessing)
+    await Event.deleteMany({ transcriptId: transcript._id, type: 'task' });
+    
+    if (aiResult.tasks && aiResult.tasks.length > 0) {
+      const events = aiResult.tasks.map(task => ({
+        title: task.title,
+        type: 'task',
+        date: task.dueDate ? new Date(task.dueDate) : transcript.date,
+        time: task.time || null,
+        completed: false,
+        transcriptId: transcript._id
+      }));
+
+      await Event.insertMany(events);
+    }
+
+    res.json({
+      transcript,
+      tasksCreated: aiResult.tasks ? aiResult.tasks.length : 0
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -114,7 +203,7 @@ router.put('/:id', async (req, res) => {
 });
 
 // @route   DELETE /api/transcripts/:id
-// @desc    Delete a transcript
+// @desc    Delete a transcript and its associated events
 router.delete('/:id', async (req, res) => {
   try {
     const transcript = await Transcript.findByIdAndDelete(req.params.id);
@@ -122,6 +211,9 @@ router.delete('/:id', async (req, res) => {
     if (!transcript) {
       return res.status(404).json({ message: 'Transcript not found' });
     }
+
+    //also delete associated events
+    await Event.deleteMany({ transcriptId: req.params.id });
 
     res.json({ message: 'Transcript deleted' });
   } catch (error) {
