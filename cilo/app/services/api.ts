@@ -1,7 +1,4 @@
-
-
-
-const API_BASE_URL = 'http://172.20.10.2:3000/api';
+const API_BASE_URL = 'http://:3000/api'; // ← CHANGE THIS!
 
 // Helper function for API calls
 async function fetchAPI(endpoint: string, options?: RequestInit) {
@@ -49,7 +46,6 @@ export const transcriptsAPI = {
     content?: string;
     color?: string;
     participants?: string[];
-    tags?: string[];
   }) => fetchAPI('/transcripts', {
     method: 'POST',
     body: JSON.stringify(data),
@@ -131,9 +127,10 @@ export interface Transcript {
   date: string;
   duration: string;
   content: string;
+  summary: string;
   color: string;
   participants: string[];
-  tags: string[];
+  processed: boolean;
   createdAt: string;
   updatedAt: string;
 }

@@ -130,21 +130,31 @@ export default function TranscriptDetailScreen() {
         {/* Date */}
         <Text style={styles.dateText}>{formatDate(transcript.date)}</Text>
 
+        {/* AI Summary */}
+        {transcript.summary && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Summary</Text>
+            <View style={styles.summaryCard}>
+              <Text style={styles.summaryText}>{transcript.summary}</Text>
+            </View>
+          </View>
+        )}
+
         {/* Participants */}
         {transcript.participants && transcript.participants.length > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Participants</Text>
             <View style={styles.participantsList}>
               {transcript.participants.map((participant: string, index: number) => (
-                <View key={index} style={styles.participantChip}>
-                  <View style={styles.participantAvatar}>
-                    <Text style={styles.participantInitial}>
-                      {participant.charAt(0).toUpperCase()}
-                    </Text>
+                  <View key={index} style={styles.participantChip}>
+                    <View style={styles.participantAvatar}>
+                      <Text style={styles.participantInitial}>
+                        {participant.charAt(0).toUpperCase()}
+                      </Text>
+                    </View>
+                    <Text style={styles.participantName}>{participant}</Text>
                   </View>
-                  <Text style={styles.participantName}>{participant}</Text>
-                </View>
-              ))}
+                ))}
             </View>
           </View>
         )}
@@ -307,6 +317,19 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginBottom: 12,
+  },
+  summaryCard: {
+    backgroundColor: '#F3F0FF',
+    borderRadius: 12,
+    padding: 16,
+    borderLeftWidth: 3,
+    borderLeftColor: '#7E57C2',
+  },
+  summaryText: {
+    fontSize: 15,
+    color: '#374151',
+    lineHeight: 24,
+    fontStyle: 'italic',
   },
   participantsList: {
     flexDirection: 'row',
