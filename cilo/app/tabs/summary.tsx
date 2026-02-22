@@ -46,12 +46,23 @@ export default function SummaryScreen() {
   };
 
   const handleToggleTask = async (taskId: string) => {
+    // Optimistically update the UI immediately
+    if (summary) {
+      const updatedTasks = summary.tasks.map((task: Event) => 
+        task._id === taskId 
+          ? { ...task, completed: !task.completed }
+          : task
+      );
+      setSummary({ ...summary, tasks: updatedTasks });
+    }
+
+    // Then sync with backend
     try {
       await eventsAPI.toggleComplete(taskId);
-      // Reload summary to get updated data
-      loadSummary();
     } catch (err) {
       console.error('Failed to toggle task:', err);
+      // Revert on error by reloading
+      loadSummary();
     }
   };
 
@@ -110,7 +121,7 @@ export default function SummaryScreen() {
               <Text style={styles.emptyText}>No tasks for today</Text>
             </View>
           ) : (
-            tasks.map((task) => (
+            tasks.map((task: any) => (
               <Pressable 
                 key={task._id} 
                 style={styles.taskCard}
@@ -146,7 +157,7 @@ export default function SummaryScreen() {
               <Text style={styles.emptyText}>No recent events</Text>
             </View>
           ) : (
-            pastEvents.map((event) => (
+            pastEvents.map((event: Event) => (
               <View key={event._id} style={styles.eventCard}>
                 <Text style={styles.eventTitle}>{event.title}</Text>
                 {event.summary && (

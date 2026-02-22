@@ -74,22 +74,32 @@ router.get('/date/:date', async (req, res) => {
 });
 
 // @route   GET /api/events/summary/today
-// @desc    Get today's summary (tasks + past events)
+// @desc    Get today's summary (today's tasks + backlog + past events)
 router.get('/summary/today', async (req, res) => {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today);
     tomorrow.setDate(tomorrow.getDate() + 1);
-
-    // Get today's tasks
-    const tasks = await Event.find({
+    
+    // Get today's tasks (completed or not)
+    const todaysTasks = await Event.find({
       type: 'task',
       date: {
         $gte: today,
         $lt: tomorrow
       }
     }).sort({ time: 1 });
+
+    // Get backlog: incomplete tasks from before today
+    const backlogTasks = await Event.find({
+      type: 'task',
+      completed: false,
+      date: { $lt: today }
+    }).sort({ date: 1 });
+
+    // Combine: today's tasks first, then backlog
+    const tasks = [...todaysTasks, ...backlogTasks];
 
     // Get recent past events (last 7 days)
     const weekAgo = new Date(today);
