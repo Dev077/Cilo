@@ -23,13 +23,22 @@ const transcriptSchema = new mongoose.Schema({
     type: String,
     default: ''
   },
+  summary: {
+    type: String,
+    default: ''
+  },
   color: {
     type: String,
     default: '#FEF3E2'
   },
   participants: [{
     type: String
-  }]
+  }],
+  //flag to track if AI processing has been done
+  processed: {
+    type: Boolean,
+    default: false
+  }
 }, {
   timestamps: true
 });
