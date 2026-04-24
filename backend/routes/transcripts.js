@@ -79,7 +79,7 @@ router.post('/', async (req, res) => {
   try {
     const transcriptDate = req.body.date ? new Date(req.body.date) : new Date();
     
-    //create the transcript first
+    // Create the transcript first
     const transcript = new Transcript({
       label: req.body.label,
       type: req.body.type,
@@ -106,6 +106,17 @@ router.post('/', async (req, res) => {
         savedTranscript.summary = aiResult.summary;
         savedTranscript.processed = true;
         await savedTranscript.save();
+
+        // create "What Happened" event
+        if (aiResult.summary) {
+          await Event.create({
+            title: req.body.label,
+            type: 'event',
+            date: transcriptDate,
+            summary: aiResult.summary,
+            transcriptId: savedTranscript._id
+          });
+        }
 
         // Create tasks as events
         if (aiResult.tasks && aiResult.tasks.length > 0) {
@@ -157,9 +168,21 @@ router.post('/:id/process', async (req, res) => {
     transcript.processed = true;
     await transcript.save();
 
-    // Create tasks as events (delete old ones first if reprocessing)
-    await Event.deleteMany({ transcriptId: transcript._id, type: 'task' });
+    // delete old events linked to this transcript (for reprocessing)
+    await Event.deleteMany({ transcriptId: transcript._id });
+
+    // create "What Happened" event
+    if (aiResult.summary) {
+      await Event.create({
+        title: transcript.label,
+        type: 'event',
+        date: transcript.date,
+        summary: aiResult.summary,
+        transcriptId: transcript._id
+      });
+    }
     
+    // create tasks as events
     if (aiResult.tasks && aiResult.tasks.length > 0) {
       const events = aiResult.tasks.map(task => ({
         title: task.title,
@@ -175,7 +198,8 @@ router.post('/:id/process', async (req, res) => {
 
     res.json({
       transcript,
-      tasksCreated: aiResult.tasks ? aiResult.tasks.length : 0
+      tasksCreated: aiResult.tasks ? aiResult.tasks.length : 0,
+      eventCreated: aiResult.summary ? true : false
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -212,7 +236,7 @@ router.delete('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Transcript not found' });
     }
 
-    //also delete associated events
+    // Also delete associated events
     await Event.deleteMany({ transcriptId: req.params.id });
 
     res.json({ message: 'Transcript deleted' });

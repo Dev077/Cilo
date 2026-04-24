@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://:3000/api'; // ← CHANGE THIS!
+const API_BASE_URL = 'http://192.168.2.177:3000/api'; // ← CHANGE THIS!
 
 // Helper function for API calls
 async function fetchAPI(endpoint: string, options?: RequestInit) {
