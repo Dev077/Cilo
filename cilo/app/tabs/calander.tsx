@@ -513,7 +513,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.4)',
   },
   modalContent: {

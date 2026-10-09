@@ -1,4 +1,25 @@
-const API_BASE_URL = 'http://192.168.2.177:3000/api'; // ← CHANGE THIS!
+import Constants from 'expo-constants';
+
+const API_PORT = 3000;
+
+/**
+ * Resolve the backend host instead of hardcoding a LAN IP, which goes stale
+ * every time the network changes. In dev we reuse the host Expo is already
+ * serving the bundle from, so a phone on the same Wi-Fi reaches the backend
+ * too. Set EXPO_PUBLIC_API_URL to override (e.g. for a deployed backend).
+ */
+function resolveApiBaseUrl() {
+  const override = process.env.EXPO_PUBLIC_API_URL;
+  if (override) return override;
+
+  const hostUri = Constants.expoConfig?.hostUri ?? Constants.expoGoConfig?.debuggerHost;
+  const host = hostUri?.split(':')[0];
+  if (host) return `http://${host}:${API_PORT}/api`;
+
+  return `http://localhost:${API_PORT}/api`;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
 
 // Helper function for API calls
 async function fetchAPI(endpoint: string, options?: RequestInit) {
