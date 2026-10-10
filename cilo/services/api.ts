@@ -59,7 +59,7 @@ export const transcriptsAPI = {
   getByMonth: (year: number, month: number) => 
     fetchAPI(`/transcripts/month/${year}/${month}`),
 
-  // Semantic search over transcript content
+  // Keyword search over transcript names, summaries and content
   search: (query: string): Promise<SearchResult[]> =>
     fetchAPI(`/transcripts/search?q=${encodeURIComponent(query)}`),
 

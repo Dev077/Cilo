@@ -5,11 +5,11 @@ import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { RecordOrb } from '@/components/record-orb';
-import { TIME_THEMES, getTimeOfDay } from '@/constants/time-theme';
+import { useTimeTheme } from '@/hooks/use-time-theme';
 
-const ORB_SIZE = 58;
+const ORB_SIZE = 66;
 // Room around the sphere so its glow isn't clipped
-const HALO = 1.3;
+const HALO = 1.2;
 const BOX = ORB_SIZE * HALO;
 const EDGE_MARGIN = 8;
 // Matches the tab bar height in app/tabs/_layout.tsx
@@ -24,7 +24,7 @@ export function FloatingRecordButton() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
-  const theme = TIME_THEMES[getTimeOfDay()];
+  const theme = useTimeTheme();
 
   const minX = EDGE_MARGIN;
   const maxX = width - BOX - EDGE_MARGIN;

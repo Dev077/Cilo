@@ -1,6 +1,5 @@
 const Event = require('../models/Event');
 const { processTranscript } = require('./gemini');
-const { indexTranscript } = require('./search');
 
 /**
  * Parse a Gemini due date. Date-only strings ("2026-10-11") are pinned to local noon:
@@ -18,8 +17,8 @@ function parseDueDate(value, fallback) {
 }
 
 /**
- * Run a saved transcript through Gemini: summary -> "What Happened" event, action items -> tasks,
- * then index it for search. Replaces any events previously generated from this transcript.
+ * Run a saved transcript through Gemini: summary -> "What Happened" event, action items -> tasks.
+ * Replaces any events previously generated from this transcript.
  * @param {object} [options]
  * @param {boolean} [options.useAiTitle] - Replace the label with Gemini's title (for recordings saved without a name)
  * @returns {Promise<{transcript, summaryEvent, tasks}>}
@@ -58,14 +57,6 @@ async function ingestTranscript(transcript, { useAiTitle = false } = {}) {
 
   transcript.summary = aiResult.summary;
   transcript.processed = true;
-
-  // Search is a nice-to-have; never lose the summary and tasks because embedding failed
-  try {
-    await indexTranscript(transcript);
-  } catch (error) {
-    console.error('Search indexing failed:', error.message);
-  }
-
   await transcript.save();
 
   return { transcript, summaryEvent, tasks };

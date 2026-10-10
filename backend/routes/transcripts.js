@@ -3,16 +3,10 @@ const router = express.Router();
 const Transcript = require('../models/Transcript');
 const Event = require('../models/Event');
 const { ingestTranscript } = require('../services/ingest');
-const { indexTranscript, searchTranscripts } = require('../services/search');
+const { searchTranscripts } = require('../services/search');
 
 // Pastel sticky-note colors, matching the app
 const NOTE_COLORS = ['#FEF3E2', '#E8F5E9', '#E3F2FD', '#FFF3E0', '#FCE4EC', '#EDE7F6', '#E0F7FA', '#F3E5F5'];
-
-// Strip the search index before sending a transcript to the app
-function toClient(transcript) {
-  const { chunks, ...rest } = transcript.toObject();
-  return rest;
-}
 
 // @route   GET /api/transcripts
 // @desc    Get all transcripts
@@ -26,7 +20,7 @@ router.get('/', async (req, res) => {
 });
 
 // @route   GET /api/transcripts/search?q=...
-// @desc    Semantic search over transcripts
+// @desc    Keyword search over transcripts
 router.get('/search', async (req, res) => {
   try {
     const query = (req.query.q || '').trim();
@@ -127,7 +121,7 @@ router.post('/', async (req, res) => {
       }
     }
 
-    res.status(201).json({ ...toClient(transcript), tasks });
+    res.status(201).json({ ...transcript.toObject(), tasks });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -150,7 +144,7 @@ router.post('/:id/process', async (req, res) => {
     const { summaryEvent, tasks } = await ingestTranscript(transcript);
 
     res.json({
-      transcript: toClient(transcript),
+      transcript,
       tasksCreated: tasks.length,
       eventCreated: Boolean(summaryEvent)
     });
@@ -173,17 +167,7 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Transcript not found' });
     }
 
-    // Keep search in sync with edits to the searchable text
-    if (['label', 'summary', 'content'].some(field => field in req.body)) {
-      try {
-        await indexTranscript(transcript);
-        await transcript.save();
-      } catch (indexError) {
-        console.error('Search re-indexing failed:', indexError.message);
-      }
-    }
-
-    res.json(toClient(transcript));
+    res.json(transcript);
   } catch (error) {
     res.status(400).json({ message: error.message });
   }

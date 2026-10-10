@@ -1,11 +1,8 @@
-const { GoogleGenerativeAI, TaskType } = require('@google/generative-ai');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 
 //initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
-const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
-
-const EMBED_BATCH_SIZE = 100;
 
 const JSON_CONFIG = { responseMimeType: 'application/json' };
 
@@ -72,39 +69,6 @@ Rules:
 }
 
 /**
- * Embed transcript chunks for semantic search
- * @param {string[]} texts
- * @returns {Promise<number[][]>}
- */
-async function embedDocuments(texts) {
-  const embeddings = [];
-  for (let i = 0; i < texts.length; i += EMBED_BATCH_SIZE) {
-    const batch = texts.slice(i, i + EMBED_BATCH_SIZE);
-    const result = await embeddingModel.batchEmbedContents({
-      requests: batch.map(text => ({
-        content: { role: 'user', parts: [{ text }] },
-        taskType: TaskType.RETRIEVAL_DOCUMENT,
-      })),
-    });
-    embeddings.push(...result.embeddings.map(e => e.values));
-  }
-  return embeddings;
-}
-
-/**
- * Embed a search query
- * @param {string} query
- * @returns {Promise<number[]>}
- */
-async function embedQuery(query) {
-  const result = await embeddingModel.embedContent({
-    content: { role: 'user', parts: [{ text: query }] },
-    taskType: TaskType.RETRIEVAL_QUERY,
-  });
-  return result.embedding.values;
-}
-
-/**
  * generate a daily summary from multiple transcripts
  * @param {Array} transcripts - Array of transcript objects
  * @returns {Promise<string>}
@@ -136,7 +100,5 @@ Write 2-3 sentences summarizing the key themes and activities. Be concise and co
 
 module.exports = {
   processTranscript,
-  embedDocuments,
-  embedQuery,
   generateDailySummary
 };

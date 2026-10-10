@@ -28,16 +28,31 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# logs
+*.log
+logs/
+
+# local env files (keep an example file if you add one)
 .env
+.env.*
+!.env.example
 
 # typescript
 *.tsbuildinfo
 
+# test coverage
+coverage/
+
+# editors (cilo/.vscode is shared on purpose)
+.idea/
+*.swp
+
 app-example
 
-# generated native folders
+# generated native folders: `npx expo run:ios` / `prebuild` recreate them from app.json
 /ios
 /android
+cilo/ios/
+cilo/android/
 
 cilo/.nvmrc

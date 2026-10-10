@@ -3,9 +3,9 @@ import { View, Text, StyleSheet, SafeAreaView, Pressable, ScrollView, Dimensions
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
+import { SpeechModule, speechAvailable, useSpeechEvent } from '@/services/speech';
 import { RecordOrb, OrbState } from '@/components/record-orb';
-import { TIME_THEMES, getTimeOfDay } from '@/constants/time-theme';
+import { useTimeTheme } from '@/hooks/use-time-theme';
 import { transcriptsAPI, Transcript, Event } from '@/services/api';
 
 type Phase = 'idle' | 'listening' | 'saving' | 'done' | 'error';
@@ -55,13 +55,15 @@ function formatDueDate(dateString: string) {
 
 export default function RecordScreen() {
   const router = useRouter();
-  const theme = TIME_THEMES[getTimeOfDay()];
+  const theme = useTimeTheme();
 
-  const [phase, setPhase] = useState<Phase>('idle');
+  const [phase, setPhase] = useState<Phase>(speechAvailable ? 'idle' : 'error');
   const [transcriptText, setTranscriptText] = useState('');
   const [level, setLevel] = useState(0);
   const [elapsed, setElapsed] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(
+    speechAvailable ? null : 'Recording needs a development build. Run `npx expo run:ios` (or run:android) instead of using Expo Go.'
+  );
   const [result, setResult] = useState<(Transcript & { tasks: Event[] }) | null>(null);
 
   // Finished segments from the recognizer, plus the one still being spoken
@@ -119,22 +121,22 @@ export default function RecordScreen() {
     startedAt.current = new Date();
     endAction.current = 'restart';
     setPhase('listening');
-    ExpoSpeechRecognitionModule.start(RECOGNITION_OPTIONS);
+    SpeechModule?.start(RECOGNITION_OPTIONS);
   };
 
   const startRecording = () => {
-    ExpoSpeechRecognitionModule.requestPermissionsAsync().then(beginListening);
+    SpeechModule?.requestPermissionsAsync().then(beginListening);
   };
 
   const stopRecording = () => {
     endAction.current = 'finish';
-    ExpoSpeechRecognitionModule.stop();
+    SpeechModule?.stop();
   };
 
   const close = () => {
     if (phase === 'listening') {
       endAction.current = 'discard';
-      ExpoSpeechRecognitionModule.abort();
+      SpeechModule?.abort();
     }
     router.back();
   };
@@ -145,7 +147,7 @@ export default function RecordScreen() {
     return () => {
       if (endAction.current === 'restart') {
         endAction.current = 'discard';
-        ExpoSpeechRecognitionModule.abort();
+        SpeechModule?.abort();
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,7 +161,7 @@ export default function RecordScreen() {
     return () => clearInterval(timer);
   }, [phase]);
 
-  useSpeechRecognitionEvent('result', (event) => {
+  useSpeechEvent('result', (event) => {
     const text = event.results[0]?.transcript?.trim() ?? '';
     if (event.isFinal) {
       if (text) segments.current.push(text);
@@ -170,12 +172,12 @@ export default function RecordScreen() {
     setTranscriptText(fullText());
   });
 
-  useSpeechRecognitionEvent('volumechange', (event) => {
+  useSpeechEvent('volumechange', (event) => {
     // value is -2..10; anything under 0 is inaudible
     setLevel(Math.max(0, Math.min(1, event.value / 10)));
   });
 
-  useSpeechRecognitionEvent('error', (event) => {
+  useSpeechEvent('error', (event) => {
     // Silence timeouts just end the session; 'end' restarts it while we're still recording
     if (event.error === 'no-speech' || event.error === 'speech-timeout' || event.error === 'aborted') return;
     endAction.current = 'discard';
@@ -185,7 +187,7 @@ export default function RecordScreen() {
     setPhase('error');
   });
 
-  useSpeechRecognitionEvent('end', () => {
+  useSpeechEvent('end', () => {
     setLevel(0);
     // Keep the interim words; a session can end mid-sentence
     if (interim.current) {
@@ -195,7 +197,7 @@ export default function RecordScreen() {
 
     if (endAction.current === 'restart') {
       // The recognizer stops on long silences and platform time limits; carry on transparently
-      ExpoSpeechRecognitionModule.start(RECOGNITION_OPTIONS);
+      SpeechModule?.start(RECOGNITION_OPTIONS);
     } else if (endAction.current === 'finish') {
       endAction.current = 'discard';
       save();
@@ -251,7 +253,7 @@ export default function RecordScreen() {
           {phase === 'error' && (
             <View style={styles.errorCard}>
               <Text style={styles.errorText}>{error}</Text>
-              <View style={styles.buttonRow}>
+              {speechAvailable && <View style={styles.buttonRow}>
                 {transcriptText !== '' && (
                   <Pressable style={styles.primaryButton} onPress={save}>
                     <Text style={styles.primaryButtonText}>Try saving again</Text>
@@ -260,7 +262,7 @@ export default function RecordScreen() {
                 <Pressable style={styles.secondaryButton} onPress={startRecording}>
                   <Text style={styles.secondaryButtonText}>Record again</Text>
                 </Pressable>
-              </View>
+              </View>}
             </View>
           )}
 

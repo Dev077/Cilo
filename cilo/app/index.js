@@ -2,12 +2,11 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { TIME_THEMES, getTimeOfDay } from '@/constants/time-theme';
+import { useTimeTheme } from '@/hooks/use-time-theme';
 
 export default function HomeScreen() {
   const router = useRouter();
-  const timeOfDay = getTimeOfDay();
-  const theme = TIME_THEMES[timeOfDay];
+  const theme = useTimeTheme();
   const userName = 'Dev';
 
   const handleTap = () => {

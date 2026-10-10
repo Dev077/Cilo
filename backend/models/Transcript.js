@@ -38,15 +38,6 @@ const transcriptSchema = new mongoose.Schema({
   processed: {
     type: Boolean,
     default: false
-  },
-  // Semantic search index; excluded from queries by default since embeddings are large
-  chunks: {
-    type: [{
-      _id: false,
-      text: String,
-      embedding: [Number]
-    }],
-    select: false
   }
 }, {
   timestamps: true
@@ -54,5 +45,11 @@ const transcriptSchema = new mongoose.Schema({
 
 // Index for faster queries by date
 transcriptSchema.index({ date: -1 });
+
+// Full-text search; matches in the label and summary count for more than the raw transcript
+transcriptSchema.index(
+  { label: 'text', summary: 'text', content: 'text' },
+  { name: 'transcript_text_search', weights: { label: 5, summary: 3, content: 1 } }
+);
 
 module.exports = mongoose.model('Transcript', transcriptSchema);

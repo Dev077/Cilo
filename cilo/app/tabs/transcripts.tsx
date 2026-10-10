@@ -69,7 +69,7 @@ export default function TranscriptsScreen() {
     }
   };
 
-  // Semantic search, debounced while typing
+  // Search, debounced while typing
   useEffect(() => {
     const trimmed = query.trim();
     latestQuery.current = trimmed;
