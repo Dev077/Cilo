@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -38,25 +38,24 @@ export default function TranscriptDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const loadTranscript = useCallback(() => {
+    transcriptsAPI.getById(id!)
+      .then((data) => {
+        setTranscript(data);
+        setError(null);
+      })
+      .catch((err) => {
+        setError('Failed to load transcript');
+        console.error(err);
+      })
+      .finally(() => setLoading(false));
+  }, [id]);
+
   useEffect(() => {
     if (id) {
       loadTranscript();
     }
-  }, [id]);
-
-  const loadTranscript = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await transcriptsAPI.getById(id!);
-      setTranscript(data);
-    } catch (err) {
-      setError('Failed to load transcript');
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [id, loadTranscript]);
 
   if (loading) {
     return (

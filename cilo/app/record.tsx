@@ -108,8 +108,7 @@ export default function RecordScreen() {
     setPhase('idle');
   };
 
-  const startRecording = async () => {
-    const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+  const beginListening = (permission: { granted: boolean }) => {
     if (!permission.granted) {
       setError('Cilo needs microphone and speech recognition access to record. Enable them in Settings.');
       setPhase('error');
@@ -121,6 +120,10 @@ export default function RecordScreen() {
     endAction.current = 'restart';
     setPhase('listening');
     ExpoSpeechRecognitionModule.start(RECOGNITION_OPTIONS);
+  };
+
+  const startRecording = () => {
+    ExpoSpeechRecognitionModule.requestPermissionsAsync().then(beginListening);
   };
 
   const stopRecording = () => {
@@ -249,7 +252,7 @@ export default function RecordScreen() {
             <View style={styles.errorCard}>
               <Text style={styles.errorText}>{error}</Text>
               <View style={styles.buttonRow}>
-                {fullText() !== '' && (
+                {transcriptText !== '' && (
                   <Pressable style={styles.primaryButton} onPress={save}>
                     <Text style={styles.primaryButtonText}>Try saving again</Text>
                   </Pressable>

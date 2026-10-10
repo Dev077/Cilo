@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -82,9 +82,8 @@ export default function CalendarScreen() {
   const daysInMonth = getDaysInMonth(currentYear, currentMonth);
   const firstDayOfMonth = getFirstDayOfMonth(currentYear, currentMonth);
 
-  const loadMonth = useCallback(async (showSpinner: boolean) => {
+  const loadMonth = useCallback(async () => {
     try {
-      if (showSpinner) setLoading(true);
       const [monthTranscripts, monthTasks] = await Promise.all([
         transcriptsAPI.getByMonth(currentYear, currentMonth + 1),
         eventsAPI.getTasksByMonth(currentYear, currentMonth + 1),
@@ -98,15 +97,11 @@ export default function CalendarScreen() {
     }
   }, [currentYear, currentMonth]);
 
-  // Spinner when switching months
-  useEffect(() => {
-    loadMonth(true);
-  }, [loadMonth]);
-
-  // Quiet refresh when coming back to the tab, e.g. after a recording added deadlines
+  // Runs on focus and again whenever the month changes (loadMonth changes with it),
+  // so deadlines added by a recording show up when you come back to the tab
   useFocusEffect(
     useCallback(() => {
-      loadMonth(false);
+      loadMonth();
     }, [loadMonth])
   );
 
@@ -122,11 +117,12 @@ export default function CalendarScreen() {
       await eventsAPI.toggleComplete(task._id);
     } catch (err) {
       console.error('Failed to toggle task:', err);
-      loadMonth(false);
+      loadMonth();
     }
   };
 
   const goToPreviousMonth = () => {
+    setLoading(true);
     if (currentMonth === 0) {
       setCurrentMonth(11);
       setCurrentYear(currentYear - 1);
@@ -136,6 +132,7 @@ export default function CalendarScreen() {
   };
 
   const goToNextMonth = () => {
+    setLoading(true);
     if (currentMonth === 11) {
       setCurrentMonth(0);
       setCurrentYear(currentYear + 1);

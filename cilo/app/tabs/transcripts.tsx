@@ -59,18 +59,22 @@ export default function TranscriptsScreen() {
     }, [loadTranscripts])
   );
 
+  const handleQueryChange = (text: string) => {
+    setQuery(text);
+    const searchable = text.trim().length >= 2;
+    setSearching(searchable);
+    if (!searchable) {
+      setResults(null);
+      setSearchError(null);
+    }
+  };
+
   // Semantic search, debounced while typing
   useEffect(() => {
     const trimmed = query.trim();
     latestQuery.current = trimmed;
-    if (trimmed.length < 2) {
-      setResults(null);
-      setSearching(false);
-      setSearchError(null);
-      return;
-    }
+    if (trimmed.length < 2) return;
 
-    setSearching(true);
     const timer = setTimeout(async () => {
       try {
         const data = await transcriptsAPI.search(trimmed);
@@ -141,7 +145,7 @@ export default function TranscriptsScreen() {
         <TextInput
           style={styles.searchInput}
           value={query}
-          onChangeText={setQuery}
+          onChangeText={handleQueryChange}
           placeholder="Search by what was said…"
           placeholderTextColor="#9CA3AF"
           returnKeyType="search"
@@ -151,7 +155,7 @@ export default function TranscriptsScreen() {
         {searching ? (
           <ActivityIndicator size="small" color="#7E57C2" />
         ) : query.length > 0 ? (
-          <Pressable onPress={() => setQuery('')} hitSlop={10} accessibilityLabel="Clear search">
+          <Pressable onPress={() => handleQueryChange('')} hitSlop={10} accessibilityLabel="Clear search">
             <Ionicons name="close-circle" size={18} color="#9CA3AF" />
           </Pressable>
         ) : null}
