@@ -73,6 +73,27 @@ router.get('/date/:date', async (req, res) => {
   }
 });
 
+// @route   GET /api/events/tasks/month/:year/:month
+// @desc    Get tasks due in a specific month (for the calendar)
+router.get('/tasks/month/:year/:month', async (req, res) => {
+  try {
+    const year = parseInt(req.params.year);
+    const month = parseInt(req.params.month) - 1; // JS months are 0-indexed
+
+    const tasks = await Event.find({
+      type: 'task',
+      date: {
+        $gte: new Date(year, month, 1),
+        $lt: new Date(year, month + 1, 1)
+      }
+    }).sort({ date: 1 });
+
+    res.json(tasks);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // @route   GET /api/events/summary/today
 // @desc    Get today's summary (today's tasks + backlog + past events)
 router.get('/summary/today', async (req, res) => {
@@ -101,7 +122,7 @@ router.get('/summary/today', async (req, res) => {
     // Combine: today's tasks first, then backlog
     const tasks = [...todaysTasks, ...backlogTasks];
 
-    // Get recent past events (last 7 days)
+    // Get recent events (last 7 days, including today's conversations)
     const weekAgo = new Date(today);
     weekAgo.setDate(weekAgo.getDate() - 7);
 
@@ -109,7 +130,7 @@ router.get('/summary/today', async (req, res) => {
       type: 'event',
       date: {
         $gte: weekAgo,
-        $lt: today
+        $lt: tomorrow
       }
     }).sort({ date: -1 }).limit(5).populate('transcriptId');
 

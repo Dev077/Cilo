@@ -1,7 +1,8 @@
 const mongoose = require('mongoose');
+const path = require('path');
 const dotenv = require('dotenv');
 
-dotenv.config({ path: '../.env' });;
+dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const Transcript = require('./models/Transcript');
 const Event = require('./models/Event');

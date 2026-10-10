@@ -1,17 +1,10 @@
-const fs = require('fs/promises');
-const os = require('os');
-const path = require('path');
 const { GoogleGenerativeAI, TaskType } = require('@google/generative-ai');
-const { GoogleAIFileManager, FileState } = require('@google/generative-ai/server');
 
 //initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
 
-// Requests to Gemini are capped at 20MB, so anything near that goes through the Files API instead
-const INLINE_AUDIO_LIMIT = 15 * 1024 * 1024;
 const EMBED_BATCH_SIZE = 100;
 
 const JSON_CONFIG = { responseMimeType: 'application/json' };
@@ -23,88 +16,11 @@ function parseJSON(text) {
 }
 
 /**
- * Upload audio to the Gemini Files API and wait until it's ready to use
- * @returns {Promise<{fileData: {mimeType: string, fileUri: string}, name: string}>}
- */
-async function uploadAudioFile(buffer, mimeType) {
-  const tmpPath = path.join(os.tmpdir(), `cilo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-  await fs.writeFile(tmpPath, buffer);
-
-  try {
-    const upload = await fileManager.uploadFile(tmpPath, { mimeType, displayName: 'cilo-recording' });
-    let file = upload.file;
-    while (file.state === FileState.PROCESSING) {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      file = await fileManager.getFile(file.name);
-    }
-    if (file.state !== FileState.ACTIVE) {
-      throw new Error(`Gemini could not process the audio file (state: ${file.state})`);
-    }
-    return { fileData: { mimeType: file.mimeType, fileUri: file.uri }, name: file.name };
-  } finally {
-    await fs.unlink(tmpPath).catch(() => {});
-  }
-}
-
-/**
- * Transcribe a recording and work out who/what it was about
- * @param {Buffer} buffer - The raw audio
- * @param {string} mimeType - e.g. 'audio/mp4', 'audio/webm'
- * @returns {Promise<{content: string, label: string, type: 'person'|'topic', participants: string[]}>}
- */
-async function transcribeAudio(buffer, mimeType) {
-  let audioPart;
-  let uploadedName = null;
-
-  if (buffer.length < INLINE_AUDIO_LIMIT) {
-    audioPart = { inlineData: { data: buffer.toString('base64'), mimeType } };
-  } else {
-    const uploaded = await uploadAudioFile(buffer, mimeType);
-    audioPart = { fileData: uploaded.fileData };
-    uploadedName = uploaded.name;
-  }
-
-  const prompt = `Transcribe this audio recording of a conversation or voice note.
-
-Return a JSON response with the following structure:
-{
-  "content": "The full transcript. Start each turn on a new line as 'Name: what they said'. Use a speaker's real name if it is said in the conversation, otherwise 'Speaker 1', 'Speaker 2', etc. If there is only one speaker, omit the labels.",
-  "label": "If the conversation is mainly with one named person, their name. Otherwise a short 2-4 word topic title.",
-  "type": "'person' if the label is a person's name, otherwise 'topic'",
-  "participants": ["Names (or Speaker N labels) of everyone who spoke"]
-}
-
-Rules:
-1. Transcribe what was actually said. Do not summarize, and lightly clean up filler words ("um", "uh") only.
-2. If there is no intelligible speech, return an empty string for content.
-3. Return ONLY valid JSON, no additional text`;
-
-  try {
-    const result = await model.generateContent({
-      contents: [{ role: 'user', parts: [audioPart, { text: prompt }] }],
-      generationConfig: JSON_CONFIG,
-    });
-    const parsed = parseJSON(result.response.text());
-
-    return {
-      content: (parsed.content || '').trim(),
-      label: (parsed.label || '').trim() || 'Voice note',
-      type: parsed.type === 'person' ? 'person' : 'topic',
-      participants: Array.isArray(parsed.participants) ? parsed.participants : [],
-    };
-  } finally {
-    if (uploadedName) {
-      fileManager.deleteFile(uploadedName).catch(() => {});
-    }
-  }
-}
-
-/**
  * Process a transcript and extract tasks + summary
  * @param {string} content - The transcript content
  * @param {string} label - The transcript label (person/topic name)
  * @param {Date} transcriptDate - The date of the transcript
- * @returns {Promise<{summary: string, tasks: Array}>}
+ * @returns {Promise<{title: string, summary: string, tasks: Array}>}
  */
 async function processTranscript(content, label, transcriptDate) {
   const dateStr = transcriptDate.toLocaleDateString('en-US', {
@@ -124,6 +40,7 @@ ${content}
 
 Please analyze this transcript and return a JSON response with the following structure:
 {
+  "title": "If the conversation is mainly with one named person, their name. Otherwise a short 2-4 word topic title.",
   "summary": "A 2-3 sentence summary of what was discussed and any key decisions made",
   "tasks": [
     {
@@ -148,6 +65,7 @@ Rules:
   const parsed = parseJSON(result.response.text());
 
   return {
+    title: (parsed.title || '').trim(),
     summary: parsed.summary || '',
     tasks: Array.isArray(parsed.tasks) ? parsed.tasks.filter(task => task && task.title) : []
   };
@@ -217,7 +135,6 @@ Write 2-3 sentences summarizing the key themes and activities. Be concise and co
 }
 
 module.exports = {
-  transcribeAudio,
   processTranscript,
   embedDocuments,
   embedQuery,

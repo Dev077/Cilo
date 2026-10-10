@@ -2,7 +2,17 @@ const express = require('express');
 const router = express.Router();
 const Transcript = require('../models/Transcript');
 const Event = require('../models/Event');
-const { processTranscript } = require('../services/gemini');
+const { ingestTranscript } = require('../services/ingest');
+const { indexTranscript, searchTranscripts } = require('../services/search');
+
+// Pastel sticky-note colors, matching the app
+const NOTE_COLORS = ['#FEF3E2', '#E8F5E9', '#E3F2FD', '#FFF3E0', '#FCE4EC', '#EDE7F6', '#E0F7FA', '#F3E5F5'];
+
+// Strip the search index before sending a transcript to the app
+function toClient(transcript) {
+  const { chunks, ...rest } = transcript.toObject();
+  return rest;
+}
 
 // @route   GET /api/transcripts
 // @desc    Get all transcripts
@@ -10,6 +20,21 @@ router.get('/', async (req, res) => {
   try {
     const transcripts = await Transcript.find().sort({ date: -1 });
     res.json(transcripts);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// @route   GET /api/transcripts/search?q=...
+// @desc    Semantic search over transcripts
+router.get('/search', async (req, res) => {
+  try {
+    const query = (req.query.q || '').trim();
+    if (query.length < 2) {
+      return res.json([]);
+    }
+    const limit = Math.min(parseInt(req.query.limit) || 10, 50);
+    res.json(await searchTranscripts(query, limit));
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -74,70 +99,35 @@ router.get('/month/:year/:month', async (req, res) => {
 });
 
 // @route   POST /api/transcripts
-// @desc    Create a new transcript and process with AI
+// @desc    Create a new transcript and process with AI. Label is optional; without one, AI names it.
 router.post('/', async (req, res) => {
   try {
-    const transcriptDate = req.body.date ? new Date(req.body.date) : new Date();
-    
-    // Create the transcript first
+    const label = (req.body.label || '').trim();
+
     const transcript = new Transcript({
-      label: req.body.label,
+      label: label || 'Voice note',
       type: req.body.type,
-      date: transcriptDate,
+      date: req.body.date ? new Date(req.body.date) : new Date(),
       duration: req.body.duration,
       content: req.body.content,
-      color: req.body.color,
+      color: req.body.color || NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)],
       participants: req.body.participants,
       processed: false
     });
 
-    const savedTranscript = await transcript.save();
+    await transcript.save();
 
-    // Process with Gemini if there's content
-    if (req.body.content && req.body.content.trim().length > 0) {
+    let tasks = [];
+    if (transcript.content && transcript.content.trim().length > 0) {
       try {
-        const aiResult = await processTranscript(
-          req.body.content,
-          req.body.label,
-          transcriptDate
-        );
-
-        // Update transcript with summary
-        savedTranscript.summary = aiResult.summary;
-        savedTranscript.processed = true;
-        await savedTranscript.save();
-
-        // create "What Happened" event
-        if (aiResult.summary) {
-          await Event.create({
-            title: req.body.label,
-            type: 'event',
-            date: transcriptDate,
-            summary: aiResult.summary,
-            transcriptId: savedTranscript._id
-          });
-        }
-
-        // Create tasks as events
-        if (aiResult.tasks && aiResult.tasks.length > 0) {
-          const events = aiResult.tasks.map(task => ({
-            title: task.title,
-            type: 'task',
-            date: task.dueDate ? new Date(task.dueDate) : transcriptDate,
-            time: task.time || null,
-            completed: false,
-            transcriptId: savedTranscript._id
-          }));
-
-          await Event.insertMany(events);
-        }
+        ({ tasks } = await ingestTranscript(transcript, { useAiTitle: !label }));
       } catch (aiError) {
         console.error('AI processing failed:', aiError);
-        // Don't fail the request, just log the error
+        // Don't fail the request; it can be retried with POST /:id/process
       }
     }
 
-    res.status(201).json(savedTranscript);
+    res.status(201).json({ ...toClient(transcript), tasks });
   } catch (error) {
     res.status(400).json({ message: error.message });
   }
@@ -157,49 +147,12 @@ router.post('/:id/process', async (req, res) => {
       return res.status(400).json({ message: 'Transcript has no content to process' });
     }
 
-    const aiResult = await processTranscript(
-      transcript.content,
-      transcript.label,
-      transcript.date
-    );
-
-    // Update transcript with summary
-    transcript.summary = aiResult.summary;
-    transcript.processed = true;
-    await transcript.save();
-
-    // delete old events linked to this transcript (for reprocessing)
-    await Event.deleteMany({ transcriptId: transcript._id });
-
-    // create "What Happened" event
-    if (aiResult.summary) {
-      await Event.create({
-        title: transcript.label,
-        type: 'event',
-        date: transcript.date,
-        summary: aiResult.summary,
-        transcriptId: transcript._id
-      });
-    }
-    
-    // create tasks as events
-    if (aiResult.tasks && aiResult.tasks.length > 0) {
-      const events = aiResult.tasks.map(task => ({
-        title: task.title,
-        type: 'task',
-        date: task.dueDate ? new Date(task.dueDate) : transcript.date,
-        time: task.time || null,
-        completed: false,
-        transcriptId: transcript._id
-      }));
-
-      await Event.insertMany(events);
-    }
+    const { summaryEvent, tasks } = await ingestTranscript(transcript);
 
     res.json({
-      transcript,
-      tasksCreated: aiResult.tasks ? aiResult.tasks.length : 0,
-      eventCreated: aiResult.summary ? true : false
+      transcript: toClient(transcript),
+      tasksCreated: tasks.length,
+      eventCreated: Boolean(summaryEvent)
     });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -220,7 +173,17 @@ router.put('/:id', async (req, res) => {
       return res.status(404).json({ message: 'Transcript not found' });
     }
 
-    res.json(transcript);
+    // Keep search in sync with edits to the searchable text
+    if (['label', 'summary', 'content'].some(field => field in req.body)) {
+      try {
+        await indexTranscript(transcript);
+        await transcript.save();
+      } catch (indexError) {
+        console.error('Search re-indexing failed:', indexError.message);
+      }
+    }
+
+    res.json(toClient(transcript));
   } catch (error) {
     res.status(400).json({ message: error.message });
   }

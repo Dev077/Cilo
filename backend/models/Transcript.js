@@ -38,6 +38,15 @@ const transcriptSchema = new mongoose.Schema({
   processed: {
     type: Boolean,
     default: false
+  },
+  // Semantic search index; excluded from queries by default since embeddings are large
+  chunks: {
+    type: [{
+      _id: false,
+      text: String,
+      embedding: [Number]
+    }],
+    select: false
   }
 }, {
   timestamps: true
