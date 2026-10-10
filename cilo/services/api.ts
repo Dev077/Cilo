@@ -32,7 +32,8 @@ async function fetchAPI(endpoint: string, options?: RequestInit) {
     });
 
     if (!response.ok) {
-      throw new Error(`API Error: ${response.status}`);
+      const body = await response.json().catch(() => null);
+      throw new Error(body?.message || `API Error: ${response.status}`);
     }
 
     return await response.json();
@@ -58,16 +59,20 @@ export const transcriptsAPI = {
   getByMonth: (year: number, month: number) => 
     fetchAPI(`/transcripts/month/${year}/${month}`),
 
-  // Create new transcript
+  // Semantic search over transcript content
+  search: (query: string): Promise<SearchResult[]> =>
+    fetchAPI(`/transcripts/search?q=${encodeURIComponent(query)}`),
+
+  // Create new transcript (AI names it when label is omitted); returns the tasks it extracted
   create: (data: {
-    label: string;
+    label?: string;
     type?: 'person' | 'topic';
     date?: string;
     duration: string;
     content?: string;
     color?: string;
     participants?: string[];
-  }) => fetchAPI('/transcripts', {
+  }): Promise<Transcript & { tasks: Event[] }> => fetchAPI('/transcripts', {
     method: 'POST',
     body: JSON.stringify(data),
   }),
@@ -104,6 +109,10 @@ export const eventsAPI = {
 
   // Get events by date (YYYY-MM-DD)
   getByDate: (date: string) => fetchAPI(`/events/date/${date}`),
+
+  // Get tasks due in a month (for the calendar)
+  getTasksByMonth: (year: number, month: number): Promise<Event[]> =>
+    fetchAPI(`/events/tasks/month/${year}/${month}`),
 
   // Get today's summary (tasks + past events)
   getTodaySummary: () => fetchAPI('/events/summary/today'),
@@ -167,6 +176,12 @@ export interface Event {
   transcriptId?: Transcript;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SearchResult {
+  transcript: Transcript;
+  score: number;
+  snippet: string;
 }
 
 export interface TodaySummary {

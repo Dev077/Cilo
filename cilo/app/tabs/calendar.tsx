@@ -13,7 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { transcriptsAPI, Transcript } from '../services/api';
+import { transcriptsAPI, Transcript } from '@/services/api';
 
 const { width } = Dimensions.get('window');
 const DAY_CELL_SIZE = (width - 48) / 7;

@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { transcriptsAPI, Transcript } from '../services/api';
+import { transcriptsAPI, Transcript } from '@/services/api';
 
 function formatDate(dateString: string) {
   const date = new Date(dateString);

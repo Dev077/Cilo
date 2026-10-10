@@ -37,7 +37,13 @@
           }
         }
       ],
-      "expo-audio"
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Cilo uses the microphone to transcribe your conversations.",
+          "speechRecognitionPermission": "Cilo uses speech recognition to turn your conversations into transcripts."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

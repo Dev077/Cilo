@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, Pressable, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { transcriptsAPI, Transcript } from '../services/api';
+import { transcriptsAPI, Transcript } from '@/services/api';
 
 // Fallback colors if transcript doesn't have one
 const NOTE_COLORS = [

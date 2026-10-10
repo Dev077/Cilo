@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, Pressable, ActivityIndicator } from 'react-native';
-import { eventsAPI, Event, TodaySummary } from '../services/api';
+import { eventsAPI, Event, TodaySummary } from '@/services/api';
 
 function formatTime(dateString: string) {
   const date = new Date(dateString);
