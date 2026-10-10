@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -12,8 +12,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { transcriptsAPI, Transcript } from '@/services/api';
+import { useFocusEffect, useRouter } from 'expo-router';
+import { transcriptsAPI, eventsAPI, Transcript, Event } from '@/services/api';
 
 const { width } = Dimensions.get('window');
 const DAY_CELL_SIZE = (width - 48) / 7;
@@ -49,51 +49,80 @@ function formatDisplayDate(dateString: string) {
   });
 }
 
-// Group transcripts by date
-function groupByDate(transcripts: Transcript[]): Record<string, Transcript[]> {
-  const grouped: Record<string, Transcript[]> = {};
+// Group transcripts or tasks by local calendar day
+function groupByDate<T extends { date: string }>(items: T[]): Record<string, T[]> {
+  const grouped: Record<string, T[]> = {};
   
-  transcripts.forEach((transcript) => {
-    const date = new Date(transcript.date);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  items.forEach((item) => {
+    const date = new Date(item.date);
+    const key = formatDateKey(date.getFullYear(), date.getMonth(), date.getDate());
     
     if (!grouped[key]) {
       grouped[key] = [];
     }
-    grouped[key].push(transcript);
+    grouped[key].push(item);
   });
   
   return grouped;
 }
+
+// Dots shown per day before collapsing into the count
+const MAX_TASK_DOTS = 3;
 
 export default function CalendarScreen() {
   const today = new Date();
   const router = useRouter();
   const [currentYear, setCurrentYear] = useState(today.getFullYear());
   const [currentMonth, setCurrentMonth] = useState(today.getMonth());
-  const [selectedTranscript, setSelectedTranscript] = useState<Transcript | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [transcripts, setTranscripts] = useState<Transcript[]>([]);
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [eventsByDate, setEventsByDate] = useState<Record<string, Transcript[]>>({});
+  const [tasksByDate, setTasksByDate] = useState<Record<string, Event[]>>({});
 
   const daysInMonth = getDaysInMonth(currentYear, currentMonth);
   const firstDayOfMonth = getFirstDayOfMonth(currentYear, currentMonth);
 
-  useEffect(() => {
-    loadTranscripts();
-  }, [currentYear, currentMonth]);
-
-  const loadTranscripts = async () => {
+  const loadMonth = useCallback(async (showSpinner: boolean) => {
     try {
-      setLoading(true);
-      const data = await transcriptsAPI.getByMonth(currentYear, currentMonth + 1);
-      setTranscripts(data);
-      setEventsByDate(groupByDate(data));
+      if (showSpinner) setLoading(true);
+      const [monthTranscripts, monthTasks] = await Promise.all([
+        transcriptsAPI.getByMonth(currentYear, currentMonth + 1),
+        eventsAPI.getTasksByMonth(currentYear, currentMonth + 1),
+      ]);
+      setEventsByDate(groupByDate<Transcript>(monthTranscripts));
+      setTasksByDate(groupByDate<Event>(monthTasks));
     } catch (err) {
-      console.error('Failed to load transcripts:', err);
+      console.error('Failed to load calendar:', err);
     } finally {
       setLoading(false);
+    }
+  }, [currentYear, currentMonth]);
+
+  // Spinner when switching months
+  useEffect(() => {
+    loadMonth(true);
+  }, [loadMonth]);
+
+  // Quiet refresh when coming back to the tab, e.g. after a recording added deadlines
+  useFocusEffect(
+    useCallback(() => {
+      loadMonth(false);
+    }, [loadMonth])
+  );
+
+  const handleToggleTask = async (task: Event) => {
+    const key = selectedDate;
+    if (!key) return;
+    // Optimistically update, then sync with backend
+    setTasksByDate((prev) => ({
+      ...prev,
+      [key]: (prev[key] || []).map((t) => (t._id === task._id ? { ...t, completed: !t.completed } : t)),
+    }));
+    try {
+      await eventsAPI.toggleComplete(task._id);
+    } catch (err) {
+      console.error('Failed to toggle task:', err);
+      loadMonth(false);
     }
   };
 
@@ -115,9 +144,15 @@ export default function CalendarScreen() {
     }
   };
 
-  const handleEventPress = (transcript: Transcript) => {
-    setSelectedTranscript(transcript);
-    setModalVisible(true);
+  const selectedTranscripts = selectedDate ? eventsByDate[selectedDate] || [] : [];
+  const selectedTasks = selectedDate ? tasksByDate[selectedDate] || [] : [];
+
+  const openTranscript = (id: string) => {
+    setSelectedDate(null);
+    router.push({
+      pathname: '/transcript/[id]' as any,
+      params: { id },
+    });
   };
 
   const renderCalendarDays = () => {
@@ -132,14 +167,21 @@ export default function CalendarScreen() {
     for (let day = 1; day <= daysInMonth; day++) {
       const dateKey = formatDateKey(currentYear, currentMonth, day);
       const dayTranscripts = eventsByDate[dateKey] || [];
+      const dayTasks = tasksByDate[dateKey] || [];
       const isToday = 
         day === today.getDate() && 
         currentMonth === today.getMonth() && 
         currentYear === today.getFullYear();
       const hasEvents = dayTranscripts.length > 0;
+      const hasTasks = dayTasks.length > 0;
 
       days.push(
-        <View key={day} style={styles.dayCell}>
+        <Pressable
+          key={day}
+          style={styles.dayCell}
+          disabled={!hasEvents && !hasTasks}
+          onPress={() => setSelectedDate(dateKey)}
+        >
           <View style={[styles.dayNumberContainer, isToday && styles.todayContainer]}>
             <Text style={[styles.dayNumber, isToday && styles.todayNumber]}>
               {day}
@@ -150,7 +192,7 @@ export default function CalendarScreen() {
           {hasEvents && (
             <View style={styles.notesContainer}>
               {dayTranscripts.slice(0, 1).map((transcript, index) => (
-                <Pressable
+                <View
                   key={transcript._id}
                   style={[
                     styles.miniNote,
@@ -159,13 +201,12 @@ export default function CalendarScreen() {
                       transform: [{ rotate: `${ROTATIONS[index % ROTATIONS.length]}deg` }],
                     },
                   ]}
-                  onPress={() => handleEventPress(transcript)}
                 >
                   <View style={styles.miniTape} />
                   <Text style={styles.miniNoteText} numberOfLines={1}>
                     {transcript.label}
                   </Text>
-                </Pressable>
+                </View>
               ))}
               {dayTranscripts.length > 1 && (
                 <View style={styles.moreBadge}>
@@ -174,7 +215,22 @@ export default function CalendarScreen() {
               )}
             </View>
           )}
-        </View>
+
+          {/* Deadlines */}
+          {hasTasks && (
+            <View style={styles.taskDots}>
+              {dayTasks.slice(0, MAX_TASK_DOTS).map((task) => (
+                <View
+                  key={task._id}
+                  style={[styles.taskDot, task.completed && styles.taskDotCompleted]}
+                />
+              ))}
+              {dayTasks.length > MAX_TASK_DOTS && (
+                <Text style={styles.taskDotsMore}>+{dayTasks.length - MAX_TASK_DOTS}</Text>
+              )}
+            </View>
+          )}
+        </Pressable>
       );
     }
 
@@ -246,84 +302,76 @@ export default function CalendarScreen() {
         </SafeAreaView>
       </LinearGradient>
 
-      {/* Event Detail Modal */}
+      {/* Day Detail Modal */}
       <Modal
         animationType="fade"
         transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
+        visible={selectedDate !== null}
+        onRequestClose={() => setSelectedDate(null)}
       >
         <View style={styles.modalOverlay}>
           <Pressable 
             style={styles.modalBackdrop} 
-            onPress={() => setModalVisible(false)} 
+            onPress={() => setSelectedDate(null)} 
           />
           
           <View style={styles.modalContent}>
-            {selectedTranscript && (
+            {selectedDate && (
               <>
-                {/* Large sticky note */}
-                <View 
-                  style={[
-                    styles.modalNote, 
-                    { 
-                      backgroundColor: selectedTranscript.color || '#FEF3E2',
-                      transform: [{ rotate: '-1deg' }],
-                    }
-                  ]}
-                >
-                  <View style={styles.modalTape} />
-                  
-                  <Text style={styles.modalNoteLabel}>{selectedTranscript.label}</Text>
-                  
-                  <View style={styles.modalNoteMeta}>
-                    {selectedTranscript.duration && (
-                      <View style={styles.metaItem}>
-                        <Ionicons name="time-outline" size={14} color="#6B7280" />
-                        <Text style={styles.metaText}>{selectedTranscript.duration}</Text>
-                      </View>
-                    )}
-                  </View>
-                  
-                  <Text style={styles.modalNoteDate}>
-                    {formatDisplayDate(selectedTranscript.date)}
-                  </Text>
-                </View>
+                <Text style={styles.dayTitle}>
+                  {formatDisplayDate(`${selectedDate}T12:00:00`)}
+                </Text>
 
-                {/* Preview of content */}
-                {selectedTranscript.content && (
-                  <View style={styles.previewContainer}>
-                    <Text style={styles.previewText} numberOfLines={3}>
-                      {selectedTranscript.content}
-                    </Text>
-                  </View>
-                )}
+                <ScrollView style={styles.dayScroll} showsVerticalScrollIndicator={false}>
+                  {selectedTasks.length > 0 && (
+                    <View style={styles.daySection}>
+                      <Text style={styles.daySectionTitle}>Deadlines</Text>
+                      {selectedTasks.map((task) => (
+                        <Pressable key={task._id} style={styles.dayTaskRow} onPress={() => handleToggleTask(task)}>
+                          <View style={[styles.dayCheckbox, task.completed && styles.dayCheckboxCompleted]}>
+                            {task.completed && <Ionicons name="checkmark" size={14} color="#FFFFFF" />}
+                          </View>
+                          <Text style={[styles.dayTaskTitle, task.completed && styles.dayTaskTitleCompleted]}>
+                            {task.title}
+                          </Text>
+                          {task.time && <Text style={styles.dayTaskTime}>{task.time}</Text>}
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
 
-                {/* Action buttons */}
-                <View style={styles.modalActions}>
-                  <Pressable 
-                    style={styles.primaryButton}
-                    onPress={() => {
-                      setModalVisible(false);
-                      router.push({
-                        pathname: '/transcript/[id]' as any,
-                        params: { id: selectedTranscript._id },
-                      });
-                    }}
-                  >
-                    <Ionicons name="document-text-outline" size={18} color="#FFFFFF" />
-                    <Text style={styles.primaryButtonText}>View Transcript</Text>
-                  </Pressable>
-                  
-                  <Pressable style={styles.secondaryButton}>
-                    <Ionicons name="sparkles-outline" size={18} color="#7E57C2" />
-                    <Text style={styles.secondaryButtonText}>View Summary</Text>
-                  </Pressable>
-                </View>
+                  {selectedTranscripts.length > 0 && (
+                    <View style={styles.daySection}>
+                      <Text style={styles.daySectionTitle}>Conversations</Text>
+                      {selectedTranscripts.map((transcript) => (
+                        <Pressable
+                          key={transcript._id}
+                          style={[styles.dayNote, { backgroundColor: transcript.color || '#FEF3E2' }]}
+                          onPress={() => openTranscript(transcript._id)}
+                        >
+                          <View style={styles.dayNoteHeader}>
+                            <Text style={styles.dayNoteLabel} numberOfLines={1}>{transcript.label}</Text>
+                            {transcript.duration && (
+                              <View style={styles.metaItem}>
+                                <Ionicons name="time-outline" size={13} color="#6B7280" />
+                                <Text style={styles.metaText}>{transcript.duration}</Text>
+                              </View>
+                            )}
+                          </View>
+                          {(transcript.summary || transcript.content) ? (
+                            <Text style={styles.dayNoteSummary} numberOfLines={3}>
+                              {transcript.summary || transcript.content}
+                            </Text>
+                          ) : null}
+                        </Pressable>
+                      ))}
+                    </View>
+                  )}
+                </ScrollView>
 
                 <Pressable 
                   style={styles.closeButton}
-                  onPress={() => setModalVisible(false)}
+                  onPress={() => setSelectedDate(null)}
                 >
                   <Ionicons name="close" size={24} color="#9CA3AF" />
                 </Pressable>
@@ -507,6 +555,113 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 100,
   },
+  taskDots: {
+    position: 'absolute',
+    bottom: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  taskDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#7E57C2',
+  },
+  taskDotCompleted: {
+    backgroundColor: '#D1D5DB',
+  },
+  taskDotsMore: {
+    fontSize: 8,
+    fontWeight: '700',
+    color: '#7E57C2',
+  },
+  dayTitle: {
+    fontFamily: 'Georgia',
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#374151',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  dayScroll: {
+    width: '100%',
+    maxHeight: 420,
+  },
+  daySection: {
+    marginBottom: 16,
+  },
+  daySectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#9CA3AF',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  dayTaskRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  dayCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: '#D1D5DB',
+    marginRight: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dayCheckboxCompleted: {
+    backgroundColor: '#7E57C2',
+    borderColor: '#7E57C2',
+  },
+  dayTaskTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#1F2937',
+  },
+  dayTaskTitleCompleted: {
+    textDecorationLine: 'line-through',
+    color: '#9CA3AF',
+  },
+  dayTaskTime: {
+    fontSize: 13,
+    color: '#9CA3AF',
+    marginLeft: 8,
+  },
+  dayNote: {
+    borderRadius: 4,
+    padding: 14,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 1, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  dayNoteHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  dayNoteLabel: {
+    flex: 1,
+    fontFamily: 'Georgia',
+    fontStyle: 'italic',
+    fontSize: 18,
+    color: '#374151',
+    marginRight: 8,
+  },
+  dayNoteSummary: {
+    fontSize: 14,
+    color: '#4B5563',
+    lineHeight: 20,
+  },
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -528,42 +683,6 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 10,
   },
-  modalNote: {
-    width: '85%',
-    aspectRatio: 1,
-    borderRadius: 4,
-    padding: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 3, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    elevation: 4,
-    marginBottom: 16,
-  },
-  modalTape: {
-    position: 'absolute',
-    top: -8,
-    width: 60,
-    height: 16,
-    backgroundColor: 'rgba(255, 235, 180, 0.95)',
-    borderRadius: 1,
-    transform: [{ rotate: '1deg' }],
-  },
-  modalNoteLabel: {
-    fontFamily: 'Georgia',
-    fontStyle: 'italic',
-    fontSize: 32,
-    color: '#374151',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
-  modalNoteMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
   metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -572,58 +691,6 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 14,
     color: '#6B7280',
-  },
-  modalNoteDate: {
-    fontSize: 12,
-    color: '#9CA3AF',
-    textAlign: 'center',
-  },
-  previewContainer: {
-    width: '100%',
-    backgroundColor: '#F9FAFB',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
-  },
-  previewText: {
-    fontSize: 14,
-    color: '#6B7280',
-    lineHeight: 20,
-  },
-  modalActions: {
-    width: '100%',
-    gap: 12,
-    marginBottom: 8,
-  },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#7E57C2',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 14,
-    gap: 8,
-  },
-  primaryButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  secondaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F3F0FF',
-    paddingVertical: 14,
-    paddingHorizontal: 24,
-    borderRadius: 14,
-    gap: 8,
-  },
-  secondaryButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#7E57C2',
   },
   closeButton: {
     padding: 8,

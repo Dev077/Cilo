@@ -24,8 +24,12 @@ type Props = {
   state: OrbState;
   /** Voice level 0..1 while listening */
   level: number;
-  onPress: () => void;
+  /** Omit to render a plain view, e.g. when a parent gesture handles taps */
+  onPress?: () => void;
   disabled?: boolean;
+  /** Room around the sphere for the glow and ripples, as a multiple of size */
+  haloScale?: number;
+  showIcon?: boolean;
 };
 
 // How long one full turn of each swirl layer takes, per state (ms)
@@ -53,7 +57,7 @@ function spin(rotation: SharedValue<number>, duration: number, direction: 1 | -1
  * clip, so the colors drift into each other like a mesh gradient. It breathes when idle, swells
  * with your voice and sends out ripples while listening, and swirls fast while processing.
  */
-export function RecordOrb({ size, colors, state, level, onPress, disabled }: Props) {
+export function RecordOrb({ size, colors, state, level, onPress, disabled, haloScale = 1.8, showIcon = true }: Props) {
   const swirlA = useSharedValue(0);
   const swirlB = useSharedValue(120);
   const swirlC = useSharedValue(240);
@@ -103,20 +107,22 @@ export function RecordOrb({ size, colors, state, level, onPress, disabled }: Pro
   const swirlStyleB = useAnimatedStyle(() => ({ transform: [{ rotate: `${swirlB.get()}deg` }] }));
   const swirlStyleC = useAnimatedStyle(() => ({ transform: [{ rotate: `${swirlC.get()}deg` }] }));
   const iconStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(state === 'idle' ? 0.9 : 0, { duration: 300 }),
+    opacity: withTiming(showIcon && state === 'idle' ? 0.9 : 0, { duration: 300 }),
   }));
 
   const swirlSize = size * 1.6;
   const swirlOffset = (size - swirlSize) / 2;
   const swirlLayer = { width: swirlSize, height: swirlSize, left: swirlOffset, top: swirlOffset };
 
+  const Container = onPress ? Pressable : View;
+
   return (
-    <Pressable
+    <Container
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={state === 'listening' ? 'Stop recording' : 'Start recording'}
-      style={[styles.container, { width: size * 1.8, height: size * 1.8 }]}
+      style={[styles.container, { width: size * haloScale, height: size * haloScale }]}
     >
       {ripples.map((ripple, i) => (
         <Ripple key={i} progress={ripple} visibility={rippleOpacity} voice={voice} size={size} color={colors[2]} />
@@ -155,7 +161,7 @@ export function RecordOrb({ size, colors, state, level, onPress, disabled }: Pro
           </Animated.View>
         </View>
       </Animated.View>
-    </Pressable>
+    </Container>
   );
 }
 
@@ -198,7 +204,7 @@ const styles = StyleSheet.create({
     borderRadius: 9999,
   },
   icon: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'center',
     alignItems: 'center',
   },

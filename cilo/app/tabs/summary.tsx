@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, SafeAreaView, Pressable, ActivityIndicator } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { eventsAPI, Event, TodaySummary } from '@/services/api';
 
 function formatTime(dateString: string) {
@@ -27,23 +28,30 @@ export default function SummaryScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadSummary();
-  }, []);
+  const hasLoaded = useRef(false);
 
-  const loadSummary = async () => {
+  // Reload whenever the tab comes into view, so new recordings show up straight away.
+  // Only the first load shows a spinner; later refreshes swap the data in quietly.
+  const loadSummary = useCallback(async () => {
     try {
-      setLoading(true);
+      if (!hasLoaded.current) setLoading(true);
       setError(null);
       const data = await eventsAPI.getTodaySummary();
       setSummary(data);
+      hasLoaded.current = true;
     } catch (err) {
       setError('Failed to load summary');
       console.error(err);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSummary();
+    }, [loadSummary])
+  );
 
   const handleToggleTask = async (taskId: string) => {
     // Optimistically update the UI immediately
@@ -330,6 +338,7 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   bottomSpacing: {
-    height: 20,
+    // Leave room for the floating record orb
+    height: 100,
   },
 });
