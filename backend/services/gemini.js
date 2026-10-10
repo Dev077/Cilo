@@ -1,8 +1,103 @@
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const fs = require('fs/promises');
+const os = require('os');
+const path = require('path');
+const { GoogleGenerativeAI, TaskType } = require('@google/generative-ai');
+const { GoogleAIFileManager, FileState } = require('@google/generative-ai/server');
 
 //initialize Gemini
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const fileManager = new GoogleAIFileManager(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
+
+// Requests to Gemini are capped at 20MB, so anything near that goes through the Files API instead
+const INLINE_AUDIO_LIMIT = 15 * 1024 * 1024;
+const EMBED_BATCH_SIZE = 100;
+
+const JSON_CONFIG = { responseMimeType: 'application/json' };
+
+function parseJSON(text) {
+  // Clean up the response - remove markdown code blocks if present
+  const cleanedText = text.trim().replace(/^```(?:json)?/, '').replace(/```$/, '').trim();
+  return JSON.parse(cleanedText);
+}
+
+/**
+ * Upload audio to the Gemini Files API and wait until it's ready to use
+ * @returns {Promise<{fileData: {mimeType: string, fileUri: string}, name: string}>}
+ */
+async function uploadAudioFile(buffer, mimeType) {
+  const tmpPath = path.join(os.tmpdir(), `cilo-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  await fs.writeFile(tmpPath, buffer);
+
+  try {
+    const upload = await fileManager.uploadFile(tmpPath, { mimeType, displayName: 'cilo-recording' });
+    let file = upload.file;
+    while (file.state === FileState.PROCESSING) {
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      file = await fileManager.getFile(file.name);
+    }
+    if (file.state !== FileState.ACTIVE) {
+      throw new Error(`Gemini could not process the audio file (state: ${file.state})`);
+    }
+    return { fileData: { mimeType: file.mimeType, fileUri: file.uri }, name: file.name };
+  } finally {
+    await fs.unlink(tmpPath).catch(() => {});
+  }
+}
+
+/**
+ * Transcribe a recording and work out who/what it was about
+ * @param {Buffer} buffer - The raw audio
+ * @param {string} mimeType - e.g. 'audio/mp4', 'audio/webm'
+ * @returns {Promise<{content: string, label: string, type: 'person'|'topic', participants: string[]}>}
+ */
+async function transcribeAudio(buffer, mimeType) {
+  let audioPart;
+  let uploadedName = null;
+
+  if (buffer.length < INLINE_AUDIO_LIMIT) {
+    audioPart = { inlineData: { data: buffer.toString('base64'), mimeType } };
+  } else {
+    const uploaded = await uploadAudioFile(buffer, mimeType);
+    audioPart = { fileData: uploaded.fileData };
+    uploadedName = uploaded.name;
+  }
+
+  const prompt = `Transcribe this audio recording of a conversation or voice note.
+
+Return a JSON response with the following structure:
+{
+  "content": "The full transcript. Start each turn on a new line as 'Name: what they said'. Use a speaker's real name if it is said in the conversation, otherwise 'Speaker 1', 'Speaker 2', etc. If there is only one speaker, omit the labels.",
+  "label": "If the conversation is mainly with one named person, their name. Otherwise a short 2-4 word topic title.",
+  "type": "'person' if the label is a person's name, otherwise 'topic'",
+  "participants": ["Names (or Speaker N labels) of everyone who spoke"]
+}
+
+Rules:
+1. Transcribe what was actually said. Do not summarize, and lightly clean up filler words ("um", "uh") only.
+2. If there is no intelligible speech, return an empty string for content.
+3. Return ONLY valid JSON, no additional text`;
+
+  try {
+    const result = await model.generateContent({
+      contents: [{ role: 'user', parts: [audioPart, { text: prompt }] }],
+      generationConfig: JSON_CONFIG,
+    });
+    const parsed = parseJSON(result.response.text());
+
+    return {
+      content: (parsed.content || '').trim(),
+      label: (parsed.label || '').trim() || 'Voice note',
+      type: parsed.type === 'person' ? 'person' : 'topic',
+      participants: Array.isArray(parsed.participants) ? parsed.participants : [],
+    };
+  } finally {
+    if (uploadedName) {
+      fileManager.deleteFile(uploadedName).catch(() => {});
+    }
+  }
+}
 
 /**
  * Process a transcript and extract tasks + summary
@@ -46,37 +141,49 @@ Rules:
 4. Keep the summary concise and factual
 5. Return ONLY valid JSON, no additional text`;
 
-  try {
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    
-    // Clean up the response - remove markdown code blocks if present
-    let cleanedText = text.trim();
-    if (cleanedText.startsWith('```json')) {
-      cleanedText = cleanedText.slice(7);
-    } else if (cleanedText.startsWith('```')) {
-      cleanedText = cleanedText.slice(3);
-    }
-    if (cleanedText.endsWith('```')) {
-      cleanedText = cleanedText.slice(0, -3);
-    }
-    cleanedText = cleanedText.trim();
+  const result = await model.generateContent({
+    contents: [{ role: 'user', parts: [{ text: prompt }] }],
+    generationConfig: JSON_CONFIG,
+  });
+  const parsed = parseJSON(result.response.text());
 
-    const parsed = JSON.parse(cleanedText);
-    
-    return {
-      summary: parsed.summary || '',
-      tasks: parsed.tasks || []
-    };
-  } catch (error) {
-    console.error('Error processing transcript with Gemini:', error);
-    // Return empty results on error, don't fail the whole operation
-    return {
-      summary: '',
-      tasks: []
-    };
+  return {
+    summary: parsed.summary || '',
+    tasks: Array.isArray(parsed.tasks) ? parsed.tasks.filter(task => task && task.title) : []
+  };
+}
+
+/**
+ * Embed transcript chunks for semantic search
+ * @param {string[]} texts
+ * @returns {Promise<number[][]>}
+ */
+async function embedDocuments(texts) {
+  const embeddings = [];
+  for (let i = 0; i < texts.length; i += EMBED_BATCH_SIZE) {
+    const batch = texts.slice(i, i + EMBED_BATCH_SIZE);
+    const result = await embeddingModel.batchEmbedContents({
+      requests: batch.map(text => ({
+        content: { role: 'user', parts: [{ text }] },
+        taskType: TaskType.RETRIEVAL_DOCUMENT,
+      })),
+    });
+    embeddings.push(...result.embeddings.map(e => e.values));
   }
+  return embeddings;
+}
+
+/**
+ * Embed a search query
+ * @param {string} query
+ * @returns {Promise<number[]>}
+ */
+async function embedQuery(query) {
+  const result = await embeddingModel.embedContent({
+    content: { role: 'user', parts: [{ text: query }] },
+    taskType: TaskType.RETRIEVAL_QUERY,
+  });
+  return result.embedding.values;
 }
 
 /**
@@ -89,7 +196,7 @@ async function generateDailySummary(transcripts) {
     return 'No conversations recorded for this period.';
   }
 
-  const transcriptSummaries = transcripts.map(t => 
+  const transcriptSummaries = transcripts.map(t =>
     `- ${t.label}: ${t.summary || 'No summary available'}`
   ).join('\n');
 
@@ -110,6 +217,9 @@ Write 2-3 sentences summarizing the key themes and activities. Be concise and co
 }
 
 module.exports = {
+  transcribeAudio,
   processTranscript,
+  embedDocuments,
+  embedQuery,
   generateDailySummary
 };
