@@ -24,14 +24,6 @@ export default function TabsLayout() {
         }}
       >
         <Tabs.Screen
-          name="summary"
-          options={{
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="home-outline" size={24} color={color} />
-            ),
-          }}
-        />
-        <Tabs.Screen
           name="calendar"
           options={{
             tabBarIcon: ({ color, size }) => (
@@ -44,6 +36,14 @@ export default function TabsLayout() {
           options={{
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="document-text-outline" size={24} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="summary"
+          options={{
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="home-outline" size={24} color={color} />
             ),
           }}
         />
