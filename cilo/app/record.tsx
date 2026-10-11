@@ -24,14 +24,6 @@ const RECOGNITION_OPTIONS = {
   volumeChangeEventOptions: { enabled: true, intervalMillis: 100 },
 };
 
-const SUBTITLES: Record<Phase, string> = {
-  idle: 'Tap the orb to start recording',
-  listening: 'Listening… tap the orb when you\'re done',
-  saving: 'Pulling out to-dos and a summary…',
-  done: 'Saved to your day',
-  error: 'Something went wrong',
-};
-
 function formatClock(ms: number) {
   const totalSeconds = Math.floor(ms / 1000);
   const minutes = Math.floor(totalSeconds / 60);
@@ -223,11 +215,6 @@ export default function RecordScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>Record</Text>
-            <Text style={styles.headerSubtitle}>{SUBTITLES[phase]}</Text>
-          </View>
-
           <View style={styles.orbArea}>
             <RecordOrb
               size={ORB_SIZE}
@@ -339,23 +326,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 40,
   },
-  header: {
-    paddingTop: 12,
-    paddingBottom: 8,
-  },
-  headerTitle: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: '#1F2937',
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: '#6B7280',
-    marginTop: 4,
-  },
   orbArea: {
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 48,
   },
   clock: {
     fontFamily: 'Georgia',
